@@ -1,8 +1,7 @@
 # Hermes
 
-Hermes es un MVP academico y operativo para apoyar la conciliacion de materiales entre requerimientos de ingenieria e inventario disponible.
-
-Este repositorio queda estructurado para el Sprint 1 del proyecto, con una duracion de una semana. El objetivo de este incremento es construir la base funcional del producto: carga de archivos, seleccion de columnas e interfaz inicial.
+Hermes es una aplicacion de escritorio para preparar la conciliacion de
+materiales entre requerimientos de ingenieria e inventario disponible.
 
 ## Alcance del Sprint 1
 
@@ -18,35 +17,39 @@ El incremento de Sprint 1 incluye:
 - Interfaz base para usuarios no tecnicos.
 - Documentacion inicial del marco Scrum.
 
-## Estructura del repositorio
+## Arquitectura
+
+La aplicacion esta separada por responsabilidades:
 
 ```text
 hermes/
-├── README.md
-├── requirements.txt
-├── .gitignore
 ├── main.py
+├── pyproject.toml
+├── requirements.txt
 ├── src/
-│   └── hermes_app.py
-└── docs/
-    └── scrum/
-        ├── product_backlog.md
-        ├── sprint_1.md
-        └── definition_of_done.md
+│   └── hermes/
+│       ├── application.py
+│       ├── config.py
+│       ├── domain/
+│       ├── services/
+│       └── ui/
+└── tests/
 ```
+
+`domain` contiene el estado y los modelos, `services` concentra la lectura y
+validacion de datos, y `ui` solo se ocupa de la interfaz PySide6.
 
 ## Requisitos
 
 - Python 3.10 o superior
-- pandas
-- openpyxl
+- Un entorno grafico de escritorio
 
 ## Instalacion
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 En Windows:
@@ -54,23 +57,40 @@ En Windows:
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Ejecucion
 
 ```bash
-python main.py
+source .venv/bin/activate
+hermes
 ```
 
-## Uso esperado en Sprint 1
+Tambien se conserva el punto de entrada del repositorio:
+
+```bash
+.venv/bin/python main.py
+```
+
+## Pruebas
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+pytest
+```
+
+Las pruebas usan el backend `offscreen` de Qt, por lo que no abren ventanas.
+
+## Uso
 
 1. Ejecutar la aplicacion.
 2. Cargar el archivo de inventario.
 3. Cargar el archivo de requerimientos.
 4. Seleccionar columnas relevantes de ambos archivos.
 5. Validar la configuracion.
-6. Confirmar que el equipo ya tiene una base funcional para iniciar el Sprint 2.
+6. Confirmar que la informacion esta lista para el siguiente procesamiento.
 
 ## Roadmap inmediato
 

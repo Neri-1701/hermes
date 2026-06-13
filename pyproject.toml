@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-materials"
+version = "0.2.0"
+description = "Desktop application for preparing material reconciliation data"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openpyxl>=3.1,<4",
+    "pandas>=2.0,<4",
+    "PySide6>=6.8,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10",
+]
+
+[project.gui-scripts]
+hermes = "hermes.application:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["hermes*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

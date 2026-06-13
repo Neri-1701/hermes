@@ -1,4 +1,4 @@
-from src.hermes.application import main
+from hermes.application import main
 
 
 if __name__ == "__main__":
