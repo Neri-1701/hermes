@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -52,21 +53,37 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("centralWidget")
         root = QVBoxLayout(central)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(28, 24, 28, 28)
+        root.setSpacing(18)
         self.setCentralWidget(central)
 
-        title = QLabel("Hermes - Preparacion de datos")
+        header = QFrame()
+        header.setObjectName("header")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(22, 18, 22, 18)
+        header_layout.setSpacing(4)
+
+        eyebrow = QLabel("GESTION DE MATERIALES")
+        eyebrow.setObjectName("eyebrow")
+        header_layout.addWidget(eyebrow)
+
+        title = QLabel("Preparacion de datos")
         title.setObjectName("title")
-        root.addWidget(title)
+        header_layout.addWidget(title)
 
         subtitle = QLabel(
-            "Carga archivos, asigna sus columnas y valida la configuracion antes de procesar."
+            "Carga los archivos, relaciona sus columnas y revisa la configuracion "
+            "antes de procesar."
         )
-        root.addWidget(subtitle)
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        header_layout.addWidget(subtitle)
+        root.addWidget(header)
 
         panels_layout = QHBoxLayout()
+        panels_layout.setSpacing(16)
         for source in DataSource:
             fields = [field for field in MAPPING_FIELDS if field.source == source]
             panel = SourcePanel(source, fields)
@@ -76,27 +93,53 @@ class MainWindow(QMainWindow):
             panels_layout.addWidget(panel)
         root.addLayout(panels_layout)
 
-        actions = QHBoxLayout()
+        preview_card = QFrame()
+        preview_card.setObjectName("previewCard")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(0)
+
+        preview_header = QFrame()
+        preview_header.setObjectName("previewHeader")
+        preview_header_layout = QHBoxLayout(preview_header)
+        preview_header_layout.setContentsMargins(18, 14, 18, 14)
+        preview_header_layout.setSpacing(10)
+
+        preview_copy = QVBoxLayout()
+        preview_copy.setSpacing(2)
+        preview_title = QLabel("Vista previa")
+        preview_title.setObjectName("sectionTitle")
+        preview_copy.addWidget(preview_title)
+
+        self.status_label = QLabel("Sin datos cargados")
+        self.status_label.setObjectName("status")
+        preview_copy.addWidget(self.status_label)
+        preview_header_layout.addLayout(preview_copy)
+        preview_header_layout.addStretch()
+
         validate_button = QPushButton("Validar configuracion")
+        validate_button.setObjectName("primaryButton")
         validate_button.clicked.connect(self.validate_setup)
-        actions.addWidget(validate_button)
+        preview_header_layout.addWidget(validate_button)
 
         clear_button = QPushButton("Limpiar vista previa")
+        clear_button.setObjectName("secondaryButton")
         clear_button.clicked.connect(self.clear_preview)
-        actions.addWidget(clear_button)
-        actions.addStretch()
-
-        self.status_label = QLabel("Listo")
-        actions.addWidget(self.status_label)
-        root.addLayout(actions)
+        preview_header_layout.addWidget(clear_button)
+        preview_layout.addWidget(preview_header)
 
         self.preview_model = DataFrameTableModel(PREVIEW_LIMIT, self)
         self.preview_table = QTableView()
+        self.preview_table.setObjectName("previewTable")
         self.preview_table.setModel(self.preview_model)
         self.preview_table.setAlternatingRowColors(True)
         self.preview_table.setSortingEnabled(False)
+        self.preview_table.setShowGrid(False)
+        self.preview_table.setCornerButtonEnabled(False)
         self.preview_table.horizontalHeader().setDefaultSectionSize(180)
-        root.addWidget(self.preview_table, stretch=1)
+        self.preview_table.verticalHeader().setDefaultSectionSize(34)
+        preview_layout.addWidget(self.preview_table, stretch=1)
+        root.addWidget(preview_card, stretch=1)
 
     def _select_dataset(self, source: DataSource) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -153,46 +196,187 @@ class MainWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow, QWidget {
-                background-color: #20272e;
-                color: #f2f2f2;
+            QMainWindow, QWidget#centralWidget {
+                background-color: #f3f5f7;
+                color: #172033;
+                font-size: 13px;
+            }
+            QFrame#header {
+                background-color: #ffffff;
+                border: 1px solid #e3e7ed;
+                border-radius: 12px;
+            }
+            QLabel#eyebrow {
+                color: #65758b;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1px;
             }
             QLabel#title {
-                font-size: 22px;
+                color: #172033;
+                font-size: 24px;
                 font-weight: 700;
             }
+            QLabel#subtitle {
+                color: #65758b;
+                font-size: 13px;
+            }
             QGroupBox {
-                border: 1px solid #59636e;
-                border-radius: 6px;
+                background-color: #ffffff;
+                border: 1px solid #e3e7ed;
+                border-radius: 12px;
+                color: #263247;
+                font-size: 14px;
                 font-weight: 700;
-                margin-top: 10px;
-                padding-top: 12px;
+                margin-top: 12px;
+                padding: 18px 14px 14px 14px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                left: 14px;
+                padding: 0 6px;
+            }
+            QLabel#filePath {
+                color: #748196;
+                font-size: 12px;
+                padding: 2px 1px 8px 1px;
             }
             QPushButton {
-                background-color: #3d7ea6;
-                border: 0;
-                border-radius: 4px;
-                color: white;
-                padding: 7px 12px;
+                background-color: #eef2ff;
+                border: 1px solid #d9e0ff;
+                border-radius: 7px;
+                color: #3348a8;
+                font-weight: 600;
+                min-height: 18px;
+                padding: 8px 14px;
             }
             QPushButton:hover {
-                background-color: #4b94bd;
+                background-color: #e1e7ff;
+                border-color: #bdc9ff;
             }
-            QComboBox, QTableView {
+            QPushButton:pressed {
+                background-color: #d5ddff;
+            }
+            QPushButton#primaryButton {
+                background-color: #4056c7;
+                border-color: #4056c7;
+                color: #ffffff;
+            }
+            QPushButton#primaryButton:hover {
+                background-color: #3549ae;
+                border-color: #3549ae;
+            }
+            QPushButton#secondaryButton {
                 background-color: #ffffff;
-                color: #15191d;
-                selection-background-color: #3d7ea6;
+                border-color: #dce1e8;
+                color: #4d5b70;
+            }
+            QPushButton#secondaryButton:hover {
+                background-color: #f7f8fa;
+                border-color: #cbd2dc;
+            }
+            QComboBox {
+                background-color: #fbfcfd;
+                border: 1px solid #dce1e8;
+                border-radius: 7px;
+                color: #263247;
+                min-height: 20px;
+                padding: 6px 10px;
+            }
+            QComboBox:hover {
+                border-color: #aeb9c8;
+            }
+            QComboBox:focus {
+                background-color: #ffffff;
+                border: 1px solid #6377d8;
+            }
+            QComboBox:disabled {
+                background-color: #f1f3f5;
+                color: #9aa4b2;
+            }
+            QComboBox::drop-down {
+                border: 0;
+                width: 28px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                border: 1px solid #dce1e8;
+                color: #263247;
+                outline: 0;
+                selection-background-color: #e8ecff;
+                selection-color: #263247;
+            }
+            QFrame#previewCard {
+                background-color: #ffffff;
+                border: 1px solid #e3e7ed;
+                border-radius: 12px;
+            }
+            QFrame#previewHeader {
+                background-color: transparent;
+                border: 0;
+                border-bottom: 1px solid #e8ebef;
+            }
+            QLabel#sectionTitle {
+                color: #263247;
+                font-size: 15px;
+                font-weight: 700;
+            }
+            QLabel#status {
+                color: #748196;
+                font-size: 12px;
+            }
+            QTableView#previewTable {
+                background-color: #ffffff;
+                alternate-background-color: #f8f9fb;
+                border: 0;
+                border-bottom-left-radius: 12px;
+                border-bottom-right-radius: 12px;
+                color: #263247;
+                outline: 0;
+                selection-background-color: #e3e8ff;
+                selection-color: #1f2d5c;
             }
             QHeaderView::section {
-                background-color: #dce3e8;
-                color: #15191d;
+                background-color: #f2f4f7;
+                border: 0;
+                border-bottom: 1px solid #e1e5ea;
+                border-right: 1px solid #e8ebef;
+                color: #526176;
                 font-weight: 700;
-                padding: 5px;
+                padding: 8px 10px;
+            }
+            QTableCornerButton::section {
+                background-color: #f2f4f7;
+                border: 0;
+            }
+            QScrollBar:vertical {
+                background-color: transparent;
+                margin: 4px;
+                width: 10px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #cbd2dc;
+                border-radius: 4px;
+                min-height: 28px;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QScrollBar:horizontal {
+                background-color: transparent;
+                height: 10px;
+                margin: 4px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #cbd2dc;
+                border-radius: 4px;
+                min-width: 28px;
+            }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
+                width: 0;
             }
             """
         )
