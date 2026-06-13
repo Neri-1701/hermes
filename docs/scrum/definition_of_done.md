@@ -22,7 +22,8 @@ Una historia de usuario de Hermes se considera terminada cuando cumple con los s
 
 ## Criterios de calidad tecnica
 
-- El codigo esta separado en un punto de entrada `main.py` y una aplicacion principal en `src/hermes_app.py`.
+- El codigo esta separado en modelos de dominio, servicios, interfaz y punto de entrada.
+- La logica de carga y validacion cuenta con pruebas automatizadas.
 - Las dependencias estan declaradas en `requirements.txt`.
 - Los archivos temporales, ambientes virtuales y salidas locales estan excluidos mediante `.gitignore`.
 - El proyecto puede instalarse y ejecutarse siguiendo las instrucciones del README.
