@@ -33,16 +33,22 @@ class SourcePanel(QGroupBox):
 
         self.setTitle(f"Archivo de {source.display_name}")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 18, 14, 14)
+        layout.setSpacing(10)
 
         load_button = QPushButton(f"Cargar {source.display_name} (.xlsx)")
+        load_button.setObjectName("loadButton")
         load_button.clicked.connect(self.load_requested.emit)
         layout.addWidget(load_button)
 
         self.path_label = QLabel("Ningun archivo cargado")
+        self.path_label.setObjectName("filePath")
         self.path_label.setWordWrap(True)
         layout.addWidget(self.path_label)
 
         form = QFormLayout()
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(10)
         for field in fields:
             combo = QComboBox()
             combo.setEnabled(False)
