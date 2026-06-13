@@ -3,7 +3,9 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -44,12 +46,25 @@ class MainWindow(QMainWindow):
         self._validator = validator or SetupValidator()
         self._state = HermesState()
         self._panels: dict[DataSource, SourcePanel] = {}
+        self._dark_mode = False
 
         self.setWindowTitle(APP_TITLE)
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setMinimumSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
+        self._build_menu()
         self._build_ui()
         self._apply_styles()
+
+    def _build_menu(self) -> None:
+        menu_bar = self.menuBar()
+        menu_bar.setNativeMenuBar(False)
+        settings_menu = menu_bar.addMenu("Configuracion")
+        settings_menu.setObjectName("settingsMenu")
+        self.dark_mode_action = QAction("Modo oscuro", self)
+        self.dark_mode_action.setObjectName("darkModeAction")
+        self.dark_mode_action.setCheckable(True)
+        self.dark_mode_action.toggled.connect(self._set_dark_mode)
+        settings_menu.addAction(self.dark_mode_action)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -117,6 +132,19 @@ class MainWindow(QMainWindow):
         preview_header_layout.addLayout(preview_copy)
         preview_header_layout.addStretch()
 
+        preview_source_label = QLabel("Mostrar archivo:")
+        preview_source_label.setObjectName("previewSourceLabel")
+        preview_header_layout.addWidget(preview_source_label)
+
+        self.preview_source_combo = QComboBox()
+        self.preview_source_combo.setObjectName("previewSource")
+        self.preview_source_combo.setEnabled(False)
+        self.preview_source_combo.setMinimumWidth(160)
+        self.preview_source_combo.currentIndexChanged.connect(
+            self._change_preview_source
+        )
+        preview_header_layout.addWidget(self.preview_source_combo)
+
         validate_button = QPushButton("Validar configuracion")
         validate_button.setObjectName("primaryButton")
         validate_button.clicked.connect(self.validate_setup)
@@ -163,13 +191,41 @@ class MainWindow(QMainWindow):
         panel = self._panels[source]
         panel.clear_mappings()
         panel.set_dataset(dataset.path, dataset.columns)
+        self._add_preview_source(source)
+        self._select_preview_source(source)
+        return True
+
+    def _add_preview_source(self, source: DataSource) -> None:
+        if self.preview_source_combo.findData(source.value) < 0:
+            self.preview_source_combo.addItem(
+                source.display_name.capitalize(),
+                source.value,
+            )
+        self.preview_source_combo.setEnabled(True)
+
+    def _select_preview_source(self, source: DataSource) -> None:
+        index = self.preview_source_combo.findData(source.value)
+        self.preview_source_combo.blockSignals(True)
+        self.preview_source_combo.setCurrentIndex(index)
+        self.preview_source_combo.blockSignals(False)
+        self._show_preview(source)
+
+    def _change_preview_source(self, index: int) -> None:
+        source_value = self.preview_source_combo.itemData(index)
+        if source_value:
+            self._show_preview(DataSource(source_value))
+
+    def _show_preview(self, source: DataSource) -> None:
+        dataset = self._state.dataset_for(source)
+        if dataset is None:
+            return
+
         self.preview_model.set_dataframe(dataset.dataframe)
         self.preview_table.resizeColumnsToContents()
         self.status_label.setText(
             f"Vista de {source.display_name}: "
             f"{self.preview_model.visible_rows} de {self.preview_model.total_rows} filas"
         )
-        return True
 
     def validate_setup(self) -> None:
         result = self._validator.validate(self._state)
@@ -193,13 +249,49 @@ class MainWindow(QMainWindow):
         self.preview_model.clear()
         self.status_label.setText("Vista previa limpia")
 
+    def _set_dark_mode(self, enabled: bool) -> None:
+        self._dark_mode = enabled
+        self._apply_styles()
+
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
+        light_styles = """
             QMainWindow, QWidget#centralWidget {
                 background-color: #f3f5f7;
                 color: #172033;
                 font-size: 13px;
+            }
+            QMenuBar {
+                background-color: #ffffff;
+                border-bottom: 1px solid #e3e7ed;
+                color: #263247;
+                padding: 3px 6px;
+            }
+            QMenuBar::item {
+                background-color: transparent;
+                border-radius: 5px;
+                padding: 6px 10px;
+            }
+            QMenuBar::item:selected {
+                background-color: #eef2ff;
+                color: #3348a8;
+            }
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #dce1e8;
+                color: #263247;
+                padding: 5px;
+            }
+            QMenu::item {
+                border-radius: 5px;
+                padding: 7px 28px 7px 10px;
+            }
+            QMenu::item:selected {
+                background-color: #e8ecff;
+                color: #263247;
+            }
+            QMenu::indicator {
+                width: 14px;
+                height: 14px;
             }
             QFrame#header {
                 background-color: #ffffff;
@@ -326,6 +418,14 @@ class MainWindow(QMainWindow):
                 color: #748196;
                 font-size: 12px;
             }
+            QLabel#previewSourceLabel {
+                color: #65758b;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QComboBox#previewSource {
+                background-color: #ffffff;
+            }
             QTableView#previewTable {
                 background-color: #ffffff;
                 alternate-background-color: #f8f9fb;
@@ -379,4 +479,123 @@ class MainWindow(QMainWindow):
                 width: 0;
             }
             """
+        dark_styles = """
+            QMainWindow, QWidget#centralWidget {
+                background-color: #111827;
+                color: #e5e7eb;
+            }
+            QMenuBar {
+                background-color: #182235;
+                border-bottom-color: #334155;
+                color: #e5e7eb;
+            }
+            QMenuBar::item:selected {
+                background-color: #273553;
+                color: #c7d2fe;
+            }
+            QMenu {
+                background-color: #182235;
+                border-color: #3b4960;
+                color: #e5e7eb;
+            }
+            QMenu::item:selected {
+                background-color: #35456a;
+                color: #ffffff;
+            }
+            QFrame#header,
+            QGroupBox,
+            QFrame#previewCard {
+                background-color: #182235;
+                border-color: #334155;
+            }
+            QLabel#eyebrow,
+            QLabel#subtitle,
+            QLabel#filePath,
+            QLabel#status,
+            QLabel#previewSourceLabel {
+                color: #a8b3c5;
+            }
+            QLabel#title,
+            QLabel#sectionTitle,
+            QGroupBox {
+                color: #f1f5f9;
+            }
+            QPushButton {
+                background-color: #273553;
+                border-color: #405379;
+                color: #c7d2fe;
+            }
+            QPushButton:hover {
+                background-color: #35456a;
+                border-color: #5b6f99;
+            }
+            QPushButton:pressed {
+                background-color: #202c45;
+            }
+            QPushButton#primaryButton {
+                background-color: #596fd6;
+                border-color: #596fd6;
+                color: #ffffff;
+            }
+            QPushButton#primaryButton:hover {
+                background-color: #6c80df;
+                border-color: #6c80df;
+            }
+            QPushButton#secondaryButton {
+                background-color: #1f2b3f;
+                border-color: #40506a;
+                color: #d5dbea;
+            }
+            QPushButton#secondaryButton:hover {
+                background-color: #2b3951;
+                border-color: #53647f;
+            }
+            QComboBox,
+            QComboBox#previewSource {
+                background-color: #1f2b3f;
+                border-color: #40506a;
+                color: #e5e7eb;
+            }
+            QComboBox:hover {
+                border-color: #7183a2;
+            }
+            QComboBox:focus {
+                background-color: #243149;
+                border-color: #8192e8;
+            }
+            QComboBox:disabled {
+                background-color: #172133;
+                color: #6f7d92;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #1f2b3f;
+                border-color: #40506a;
+                color: #e5e7eb;
+                selection-background-color: #35456a;
+                selection-color: #ffffff;
+            }
+            QFrame#previewHeader {
+                border-bottom-color: #334155;
+            }
+            QTableView#previewTable {
+                background-color: #182235;
+                alternate-background-color: #1d293c;
+                color: #e5e7eb;
+                selection-background-color: #35456a;
+                selection-color: #ffffff;
+            }
+            QHeaderView::section,
+            QTableCornerButton::section {
+                background-color: #202c40;
+                border-bottom-color: #40506a;
+                border-right-color: #334155;
+                color: #cbd5e1;
+            }
+            QScrollBar::handle:vertical,
+            QScrollBar::handle:horizontal {
+                background-color: #53627a;
+            }
+            """
+        self.setStyleSheet(
+            light_styles + dark_styles if self._dark_mode else light_styles
         )

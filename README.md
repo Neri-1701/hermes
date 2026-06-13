@@ -13,6 +13,7 @@ El incremento de Sprint 1 incluye:
 - Carga de archivo de requerimientos en formato `.xlsx`.
 - Seleccion dinamica de columnas relevantes.
 - Vista previa de los datos cargados.
+- Selector de tema claro u oscuro desde el menu de configuracion.
 - Validacion de configuracion minima.
 - Interfaz base para usuarios no tecnicos.
 - Documentacion inicial del marco Scrum.
@@ -88,9 +89,11 @@ Las pruebas usan el backend `offscreen` de Qt, por lo que no abren ventanas.
 1. Ejecutar la aplicacion.
 2. Cargar el archivo de inventario.
 3. Cargar el archivo de requerimientos.
-4. Seleccionar columnas relevantes de ambos archivos.
-5. Validar la configuracion.
-6. Confirmar que la informacion esta lista para el siguiente procesamiento.
+4. Alternar entre ambos archivos con el selector de la vista previa.
+5. Seleccionar columnas relevantes de ambos archivos.
+6. Validar la configuracion.
+7. Activar opcionalmente `Configuracion > Modo oscuro`.
+8. Confirmar que la informacion esta lista para el siguiente procesamiento.
 
 ## Roadmap inmediato
 
