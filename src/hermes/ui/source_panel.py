@@ -1,3 +1,5 @@
+"""Reusable controls for loading and mapping one spreadsheet source."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -18,6 +20,8 @@ from hermes.domain.models import DataSource
 
 
 class SourcePanel(QGroupBox):
+    """Panel that emits file-load requests and field mapping changes."""
+
     load_requested = Signal()
     mapping_changed = Signal(str, str)
 
@@ -27,6 +31,7 @@ class SourcePanel(QGroupBox):
         fields: Iterable[MappingField],
         parent=None,
     ) -> None:
+        """Build controls for the mapping fields associated with `source`."""
         super().__init__(parent)
         self.source = source
         self._combos: dict[str, QComboBox] = {}
@@ -62,9 +67,11 @@ class SourcePanel(QGroupBox):
         layout.addStretch()
 
     def set_dataset(self, path: Path, columns: Iterable[str]) -> None:
+        """Show a loaded path and repopulate every mapping selector."""
         self.path_label.setText(str(path))
         values = list(columns)
         for combo in self._combos.values():
+            # Repopulating options must not create mappings on the user's behalf.
             combo.blockSignals(True)
             combo.clear()
             combo.addItems(values)
@@ -73,6 +80,7 @@ class SourcePanel(QGroupBox):
             combo.blockSignals(False)
 
     def clear_mappings(self) -> None:
+        """Clear each selector and notify application state explicitly."""
         for key, combo in self._combos.items():
             combo.setCurrentIndex(-1)
             self.mapping_changed.emit(key, "")

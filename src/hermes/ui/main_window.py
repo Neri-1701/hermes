@@ -1,3 +1,5 @@
+"""Main PySide6 window for the Hermes data-preparation workflow."""
+
 from __future__ import annotations
 
 from functools import partial
@@ -35,12 +37,15 @@ from hermes.ui.source_panel import SourcePanel
 
 
 class MainWindow(QMainWindow):
+    """Coordinate spreadsheet loading, mapping, preview, and validation."""
+
     def __init__(
         self,
         excel_reader: ExcelReader | None = None,
         validator: SetupValidator | None = None,
         parent=None,
     ) -> None:
+        """Create the window with optional service dependencies for testing."""
         super().__init__(parent)
         self._reader = excel_reader or ExcelReader()
         self._validator = validator or SetupValidator()
@@ -181,6 +186,11 @@ class MainWindow(QMainWindow):
         self.load_dataset(path, source)
 
     def load_dataset(self, path: str | Path, source: DataSource) -> bool:
+        """Load one spreadsheet source and make it the active preview.
+
+        Returns `True` after a successful load. Validation failures are shown
+        to the user and return `False` without replacing application state.
+        """
         try:
             dataset = self._reader.read(path, source)
         except DataLoadError as exc:
@@ -205,6 +215,7 @@ class MainWindow(QMainWindow):
 
     def _select_preview_source(self, source: DataSource) -> None:
         index = self.preview_source_combo.findData(source.value)
+        # The preview is refreshed once below; suppress the combo's duplicate event.
         self.preview_source_combo.blockSignals(True)
         self.preview_source_combo.setCurrentIndex(index)
         self.preview_source_combo.blockSignals(False)
@@ -228,6 +239,7 @@ class MainWindow(QMainWindow):
         )
 
     def validate_setup(self) -> None:
+        """Validate the current setup and present all resulting feedback."""
         result = self._validator.validate(self._state)
         if not result.is_valid:
             QMessageBox.warning(
@@ -246,6 +258,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Configuracion validada")
 
     def clear_preview(self) -> None:
+        """Clear only the table view while preserving loaded datasets."""
         self.preview_model.clear()
         self.status_label.setText("Vista previa limpia")
 

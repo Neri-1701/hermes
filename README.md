@@ -40,6 +40,21 @@ hermes/
 `domain` contiene el estado y los modelos, `services` concentra la lectura y
 validacion de datos, y `ui` solo se ocupa de la interfaz PySide6.
 
+### Flujo de datos
+
+1. `ExcelReader` valida el archivo, normaliza sus encabezados y crea un
+   `LoadedDataset`.
+2. `HermesState` conserva un dataset por origen y los mapeos elegidos por el
+   usuario.
+3. `DataFrameTableModel` limita la cantidad de filas mostradas sin modificar
+   el dataframe completo.
+4. `SetupValidator` comprueba que ambos archivos y todos los mapeos requeridos
+   esten disponibles antes del siguiente procesamiento.
+
+Los archivos `.xlsx` sin filas se rechazan. Tambien se rechazan encabezados
+duplicados despues de eliminar espacios al inicio y al final, porque producirian
+mapeos ambiguos.
+
 ## Requisitos
 
 - Python 3.10 o superior
@@ -94,6 +109,9 @@ Las pruebas usan el backend `offscreen` de Qt, por lo que no abren ventanas.
 6. Validar la configuracion.
 7. Activar opcionalmente `Configuracion > Modo oscuro`.
 8. Confirmar que la informacion esta lista para el siguiente procesamiento.
+
+Limpiar la vista previa solo vacia la tabla visible; no elimina los archivos ni
+los mapeos ya cargados.
 
 ## Roadmap inmediato
 

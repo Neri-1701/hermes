@@ -1,3 +1,5 @@
+"""Static application settings and required spreadsheet mappings."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +16,8 @@ PREVIEW_LIMIT = 100
 
 @dataclass(frozen=True, slots=True)
 class MappingField:
+    """Required business field that a user maps to a spreadsheet column."""
+
     key: str
     label: str
     source: DataSource

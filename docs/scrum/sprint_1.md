@@ -25,8 +25,10 @@ Al cierre del Sprint 1, Hermes debe permitir:
 - Cargar archivo de inventario en Excel.
 - Cargar archivo de requerimientos en Excel.
 - Mostrar una vista previa de los datos cargados.
+- Alternar la vista previa entre inventario y requerimientos.
 - Seleccionar columnas relevantes de ambos archivos.
 - Validar que la configuracion minima esta completa.
+- Alternar entre tema claro y oscuro.
 
 ## Fuera de alcance del Sprint 1
 
@@ -44,7 +46,19 @@ Al cierre del Sprint 1, Hermes debe permitir:
 | HU-01 | Crear boton de carga de inventario, leer Excel con pandas, guardar DataFrame en memoria, mostrar preview. |
 | HU-02 | Crear boton de carga de requerimientos, leer Excel con pandas, guardar DataFrame en memoria, mostrar preview. |
 | HU-03 | Poblar combos con columnas de cada archivo, guardar seleccion de usuario, validar campos obligatorios. |
-| HU-04 | Crear layout base con Tkinter, agregar paneles separados, estado de proceso y tabla de vista previa. |
+| HU-04 | Crear la interfaz con PySide6, agregar paneles separados, estado de proceso, selector de archivo visible y tabla de vista previa. |
+
+## Decisiones tecnicas implementadas
+
+- La interfaz se desarrollo con PySide6 y se separo de los modelos de dominio y
+  los servicios de aplicacion.
+- La lectura de archivos admite exclusivamente `.xlsx` y normaliza los
+  encabezados eliminando espacios exteriores.
+- La vista previa conserva como maximo 100 filas visibles, mientras el dataset
+  completo permanece disponible en memoria.
+- La validacion acumula todos los errores de configuracion para mostrarlos en un
+  solo mensaje.
+- El tema oscuro es una preferencia visual y no modifica los datos cargados.
 
 ## Sprint Review
 
@@ -53,8 +67,10 @@ Demostracion esperada:
 1. Ejecutar `python main.py`.
 2. Cargar archivo de inventario.
 3. Cargar archivo de requerimientos.
-4. Seleccionar columnas relevantes.
-5. Validar configuracion del Sprint 1.
+4. Alternar entre ambas fuentes desde el selector de vista previa.
+5. Seleccionar columnas relevantes.
+6. Validar configuracion del Sprint 1.
+7. Activar y desactivar el modo oscuro desde `Configuracion`.
 
 Pregunta de validacion con stakeholders:
 

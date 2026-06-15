@@ -1,3 +1,5 @@
+"""Validate whether the data-loading workflow is ready for processing."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -7,10 +9,14 @@ from hermes.domain.models import DataSource, HermesState, ValidationResult
 
 
 class SetupValidator:
+    """Check required datasets and field-to-column mappings."""
+
     def __init__(self, fields: Iterable[MappingField] = MAPPING_FIELDS) -> None:
+        """Create a validator for the supplied required mapping fields."""
         self._fields = tuple(fields)
 
     def validate(self, state: HermesState) -> ValidationResult:
+        """Return every setup error found instead of stopping at the first."""
         errors: list[str] = []
 
         for source in DataSource:
@@ -33,6 +39,11 @@ class SetupValidator:
         return ValidationResult(errors=tuple(errors))
 
     def build_summary(self, state: HermesState) -> str:
+        """Describe mappings from a state previously accepted by `validate`.
+
+        Required mappings are indexed directly because a missing key after
+        successful validation represents incorrect caller usage.
+        """
         lines = [
             "La configuracion de Hermes es valida.",
             "",
