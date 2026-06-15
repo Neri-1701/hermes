@@ -1,3 +1,5 @@
+"""Load and validate Excel inputs before they enter application state."""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -13,9 +15,17 @@ class DataLoadError(ValueError):
 
 
 class ExcelReader:
+    """Read supported spreadsheets and normalize their column labels."""
+
     supported_suffixes = frozenset({".xlsx"})
 
     def read(self, path: str | Path, source: DataSource) -> LoadedDataset:
+        """Return a validated dataset loaded from an `.xlsx` file.
+
+        Leading and trailing whitespace is removed from every header. Files
+        that become ambiguous after this normalization are rejected, as are
+        missing, unsupported, unreadable, or row-empty files.
+        """
         file_path = Path(path).expanduser()
         self._validate_path(file_path)
 
