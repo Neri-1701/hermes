@@ -175,8 +175,12 @@ def test_extracts_pipe_schedule_thickness_and_norms() -> None:
         "ASTM A106/A106M GRADO B"
     )
     assert parsed.attributes["normas_cumplimiento"] == ["ASME B36.10"]
+    assert parsed.attributes["espesor_pared_in"] == 0.218
+    assert parsed.attributes["espesor_pared_mm"] == 5.54
+    assert parsed.attributes["fuente_espesor"] == "EXPLICITO_VALIDADO_CON_CEDULA"
+    assert parsed.attributes["validacion_cedula"] == "OK"
     assert "schedule_thickness_conflict" not in parsed.warnings
-    assert 'espesor=0.218"' in parsed.canonical_key
+    assert 'espesor_pared=0.218"' in parsed.canonical_key
 
 
 def test_pipe_canonical_key_keeps_decimal_thickness_notation() -> None:
@@ -186,7 +190,34 @@ def test_pipe_canonical_key_keeps_decimal_thickness_notation() -> None:
         "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
     )
 
-    assert 'espesor=0.200"' in parsed.canonical_key
+    assert 'espesor_pared=0.200"' in parsed.canonical_key
+
+
+def test_pipe_resolves_schedule_to_wall_thickness() -> None:
+    parsed = MaterialParser().parse_description(
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+
+    assert parsed.attributes["cedula_num"] == 40
+    assert parsed.attributes["espesor_pared_in"] == 0.322
+    assert parsed.attributes["fuente_espesor"] == "INFERIDO_DESDE_CEDULA"
+    assert 'espesor_pared=0.322"' in parsed.canonical_key
+
+
+def test_pipe_does_not_treat_std_as_schedule_40_globally() -> None:
+    std = MaterialParser().parse_description(
+        'TUBO, DE 12" DE DIAMETRO NOMINAL, CEDULA STD, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    sch40 = MaterialParser().parse_description(
+        'TUBO, DE 12" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+
+    assert std.attributes["espesor_pared_in"] == 0.375
+    assert sch40.attributes["espesor_pared_in"] == 0.406
+    assert std.canonical_key != sch40.canonical_key
 
 
 def test_warns_when_verified_schedule_and_thickness_conflict() -> None:
@@ -218,7 +249,10 @@ def test_extracts_weld_neck_flange_with_schedule() -> None:
     assert parsed.family is MaterialFamily.FLANGES
     assert parsed.attributes["tipo_brida"] == "WN"
     assert parsed.attributes["cedula_num"] == 80
+    assert parsed.attributes["espesor_pared_in"] == 0.218
     assert parsed.attributes["cara"] == "RF"
+    assert 'espesor_pared=0.218"' in parsed.canonical_key
+    assert "cedula=" not in parsed.canonical_key
     assert not any(
         warning.startswith("missing_") for warning in parsed.warnings
     )
@@ -264,7 +298,10 @@ def test_extracts_butt_weld_elbow_using_schedule() -> None:
     assert parsed.attributes["cedula_num"] == 20
     assert parsed.attributes["cedula_alias"] == "STD"
     assert parsed.attributes["espesor"] == 0.375
+    assert parsed.attributes["espesor_pared_in"] == 0.375
     assert "schedule_thickness_conflict" not in parsed.warnings
+    assert 'espesor_pared=0.375"' in parsed.canonical_key
+    assert "cedula=" not in parsed.canonical_key
     assert "norma=ASME B16.9" in parsed.canonical_key
 
 

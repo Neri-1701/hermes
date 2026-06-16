@@ -21,6 +21,22 @@ PIPE = (
     "CEDULA (XS, 080), DE ACERO AL CARBONO, "
     "ASTM A106/A106M GRADO B"
 )
+PIPE_8_SCH_40 = (
+    'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+    "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+)
+PIPE_8_EXPLICIT_0322 = (
+    'TUBO, DE 8" DE DIAMETRO NOMINAL, ESPESOR DE 0.322", '
+    "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+)
+PIPE_12_STD = (
+    'TUBO, DE 12" DE DIAMETRO NOMINAL, CEDULA STD, '
+    "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+)
+PIPE_12_SCH_40 = (
+    'TUBO, DE 12" DE DIAMETRO NOMINAL, SCH 40, '
+    "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+)
 GASKET = (
     'EMPAQUE, DE 3" DE DIAMETRO NOMINAL, CLASE 150, '
     "TIPO ESPIROMETALICO, CON ANILLO CENTRADOR Y ANILLO INTERIOR, "
@@ -238,6 +254,54 @@ def test_allocates_exact_matches_without_reusing_inventory() -> None:
     assert report.user_report.iloc[0]["cantidad(es) asignada(s)"] == (
         "E-2: 4; E-1: 1"
     )
+
+
+def test_matches_schedule_against_explicit_wall_thickness() -> None:
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [PIPE_8_EXPLICIT_0322],
+                "code": ["T-8"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "udc": ["U-1"],
+                "description": [PIPE_8_SCH_40],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.COVERED.value
+    assert report.matches.iloc[0]["codigos_inventario"] == "T-8"
+
+
+def test_does_not_match_std_and_schedule_40_globally() -> None:
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [PIPE_12_STD],
+                "code": ["T-STD"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "udc": ["U-1"],
+                "description": [PIPE_12_SCH_40],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
 
 
 def test_partial_technical_match_is_suggested_but_not_allocated() -> None:

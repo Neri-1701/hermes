@@ -23,6 +23,8 @@ Hermes 0.4.0 tambien incluye:
 - Localizacion ordenada de ESPARRAGOS, EMPAQUES, TUBERIA, BRIDAS y CODOS.
 - Extractores independientes por familia.
 - Parsers compartidos de pulgadas, clase, cedula, espesor, material y normas.
+- Resolucion de cedula/schedule a espesor de pared canonico con tabla
+  operativa versionada.
 - Llaves canonicas comparables por familia.
 - `confidence_score`, warnings y evidencia con posiciones en el texto original.
 - Uso de `Data_DescripcionPartida` solo como respaldo de
@@ -74,7 +76,8 @@ validacion de datos, y `ui` solo se ocupa de la interfaz PySide6.
 5. `SetupValidator` comprueba que ambos archivos y todos los mapeos requeridos
    esten disponibles antes del siguiente procesamiento.
 6. `MaterialParser` normaliza, localiza la familia, ejecuta un solo extractor,
-   genera la llave canonica y valida la confianza del resultado.
+   resuelve cedula/schedule a espesor de pared, genera la llave canonica y
+   valida la confianza del resultado.
 7. `ReconciliationService` segmenta ambos origenes, busca compatibilidad
    tecnica y asigna solamente coincidencias exactas.
 8. La interfaz presenta el cruce, el reporte final y los saldos resultantes en
@@ -162,6 +165,15 @@ coinciden y ninguna descripcion presenta warnings bloqueantes.
 - Requerimientos requiere solo descripcion solicitada y cantidad requerida.
 - Las demas columnas del archivo de requerimientos se conservan como
   informacion del reporte final, sin pedir mapeos adicionales.
+- Para tuberia, bridas WN y codos BW, la cedula se conserva como evidencia,
+  pero la comparacion tecnica usa `espesor_pared_in`.
+- Si una descripcion trae cedula sin espesor, Hermes infiere el espesor con
+  `src/hermes/resources/pipe_wall_thickness_reference.csv`.
+- Si trae cedula y espesor explicito, Hermes valida ambos con tolerancia de
+  `0.005 in`; un conflicto genera `schedule_thickness_conflict` y evita
+  asignacion automatica.
+- No se asume `STD = 40` ni `XS = 80` globalmente: siempre se resuelve por
+  diametro nominal + token de cedula/schedule.
 - Las coincidencias exactas descuentan inventario en orden de requerimiento.
 - Un requerimiento puede cubrirse con varios renglones de inventario.
 - El saldo disponible se conserva por codigo y fila de origen.
@@ -169,6 +181,10 @@ coinciden y ninguna descripcion presenta warnings bloqueantes.
   reservan ni descuentan existencias.
 - Los conflictos de cedula/espesor, dimensiones ambiguas y materiales no
   segmentados nunca se asignan automaticamente.
+
+La tabla de espesor incluida es una referencia operativa para Hermes alineada
+con comportamiento publico de B36.10M/B36.19M. No sustituye las normas ASME
+oficiales ni una validacion de ingenieria para uso contractual.
 
 ## Reportes
 

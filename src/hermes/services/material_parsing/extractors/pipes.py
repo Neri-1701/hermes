@@ -10,6 +10,9 @@ from hermes.services.material_parsing.extractors.common import (
     canonical_part,
 )
 from hermes.services.material_parsing.normalizer import NormalizedText
+from hermes.services.material_parsing.thickness_resolver import (
+    add_resolved_thickness,
+)
 from hermes.services.material_parsing.universal import (
     ExtractedValue,
     extract_astm_specifications,
@@ -20,7 +23,6 @@ from hermes.services.material_parsing.universal import (
     extract_thickness,
     format_decimal_inches,
     format_inches,
-    schedule_thickness_conflict,
 )
 
 
@@ -111,15 +113,7 @@ class PipeExtractor:
             )
             if not present
         )
-        diameter_value = attributes.get("diametro")
-        schedule_number = attributes.get("cedula_num")
-        thickness_value = attributes.get("espesor")
-        if schedule_thickness_conflict(
-            diameter_value if isinstance(diameter_value, float) else None,
-            schedule_number if isinstance(schedule_number, int) else None,
-            thickness_value if isinstance(thickness_value, float) else None,
-        ):
-            warnings.append("schedule_thickness_conflict")
+        add_resolved_thickness(attributes, warnings)
 
         diameter_key = (
             format_inches(attributes["diametro"], 8)
@@ -127,17 +121,15 @@ class PipeExtractor:
             else None
         )
         thickness_key = (
-            format_decimal_inches(attributes["espesor"])
-            if "espesor" in attributes
+            format_decimal_inches(attributes["espesor_pared_in"])
+            if "espesor_pared_in" in attributes
             else None
         )
-        schedule_key = attributes.get("cedula_num") or attributes.get("cedula_alias")
         canonical_key = "|".join(
             (
                 "TUBO",
                 canonical_part("diametro", diameter_key),
-                canonical_part("cedula", schedule_key),
-                canonical_part("espesor", thickness_key),
+                canonical_part("espesor_pared", thickness_key),
                 canonical_part("material", attributes.get("material_base")),
                 canonical_part("astm", attributes.get("especificacion_material")),
             )

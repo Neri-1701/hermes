@@ -24,11 +24,15 @@ COMPOSITE_SCHEDULE_PATTERN = re.compile(
     r"\bCEDULA\s*\((?P<alias>[^,\)]*?)\s*,\s*0*(?P<num>[0-9]+)\)"
 )
 SIMPLE_SCHEDULE_PATTERN = re.compile(
-    r"\bCEDULA\s*:?\s*(?P<value>0*[0-9]+|STD|XS|XXS)\b"
+    r"\b(?:CEDULA|SCHEDULE|SCH)\s*:?\s*"
+    r"(?P<value>0*[0-9]+S?|STD|XS|XXS)\b"
 )
 THICKNESS_PATTERN = re.compile(
     rf"(?:\bDE\s+|\bCON\s+ESPESOR\s+DE\s+)?"
     rf"(?P<value>{NUM_PATTERN})\s*\"\s*(?:DE\s+)?ESPESOR\b"
+)
+PREFIX_THICKNESS_PATTERN = re.compile(
+    rf"\bESPESOR\s+DE\s+(?P<value>{NUM_PATTERN})\s*\""
 )
 
 MATERIAL_PATTERNS = (
@@ -49,14 +53,6 @@ COMPLIANCE_PATTERNS = (
     re.compile(r"\bISO\s+\d+(?:-\d+)?\b"),
     re.compile(r"\bAPI\s+[A-Z0-9./-]+\b"),
 )
-
-KNOWN_SCHEDULE_THICKNESS = {
-    (1.5, 80): 0.200,
-    (2.0, 80): 0.218,
-    (3.0, 80): 0.300,
-    (24.0, 20): 0.375,
-}
-
 
 @dataclass(frozen=True, slots=True)
 class ExtractedValue:
@@ -250,6 +246,8 @@ def extract_thickness(normalized: NormalizedText) -> ExtractedValue | None:
     """Extract wall or plate thickness expressed in inches."""
     match = THICKNESS_PATTERN.search(normalized.text)
     if match is None:
+        match = PREFIX_THICKNESS_PATTERN.search(normalized.text)
+    if match is None:
         return None
     return _extracted(
         normalized,
@@ -324,19 +322,3 @@ def validate_increment(value: float, increment: float) -> bool:
     """Return whether a dimension aligns with its family increment."""
     quotient = value / increment
     return math.isclose(quotient, round(quotient), abs_tol=1e-8)
-
-
-def schedule_thickness_conflict(
-    diameter: float | None,
-    schedule: int | None,
-    thickness: float | None,
-) -> bool:
-    """Detect contradictions only where Hermes has a verified reference."""
-    if diameter is None or schedule is None or thickness is None:
-        return False
-    expected = KNOWN_SCHEDULE_THICKNESS.get((diameter, schedule))
-    return expected is not None and not math.isclose(
-        expected,
-        thickness,
-        abs_tol=0.005,
-    )

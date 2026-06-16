@@ -26,6 +26,9 @@ hermes = "hermes.application:main"
 where = ["src"]
 include = ["hermes*"]
 
+[tool.setuptools.package-data]
+hermes = ["resources/*.csv"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

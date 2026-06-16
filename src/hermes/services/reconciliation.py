@@ -477,8 +477,7 @@ class ReconciliationService:
         if family is MaterialFamily.PIPE:
             return (
                 _FieldRule("diametro", 4, True),
-                _FieldRule("cedula", 3),
-                _FieldRule("espesor", 2),
+                _FieldRule("espesor_pared", 5, True),
                 _FieldRule("material_base", 3),
                 _FieldRule("especificacion_material", 2),
                 _FieldRule("fabricacion", 1),
@@ -490,7 +489,7 @@ class ReconciliationService:
                 _FieldRule("tipo_brida", 3, True),
                 _FieldRule("diametro", 3, True),
                 _FieldRule("clase", 3, True),
-                _FieldRule("cedula", 2),
+                _FieldRule("espesor_pared", 2),
                 _FieldRule("cara", 2),
                 _FieldRule("material_base", 2),
                 _FieldRule("especificacion_material", 1),
@@ -501,7 +500,7 @@ class ReconciliationService:
                 _FieldRule("angulo", 3, True),
                 _FieldRule("diametro", 3, True),
                 _FieldRule("clase", 3),
-                _FieldRule("cedula", 3),
+                _FieldRule("espesor_pared", 3),
                 _FieldRule("radio", 1),
                 _FieldRule("extremos", 2),
                 _FieldRule("material_base", 2),
@@ -518,6 +517,8 @@ class ReconciliationService:
                 return ("NUM", number)
             alias = parsed.attributes.get("cedula_alias")
             return ("ALIAS", alias) if alias is not None else None
+        if name == "espesor_pared":
+            return parsed.attributes.get("espesor_pared_in")
         if name == "family_norm":
             standards = parsed.attributes.get("normas_cumplimiento", ())
             expected = {
@@ -536,7 +537,7 @@ class ReconciliationService:
     def _values_equal(left: Any, right: Any) -> bool:
         if isinstance(left, float) or isinstance(right, float):
             try:
-                return math.isclose(float(left), float(right), abs_tol=0.001)
+                return math.isclose(float(left), float(right), abs_tol=0.005)
             except (TypeError, ValueError):
                 return False
         return left == right

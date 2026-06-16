@@ -10,6 +10,9 @@ from hermes.services.material_parsing.extractors.common import (
     canonical_part,
 )
 from hermes.services.material_parsing.normalizer import NormalizedText
+from hermes.services.material_parsing.thickness_resolver import (
+    add_resolved_thickness,
+)
 from hermes.services.material_parsing.universal import (
     ExtractedValue,
     extract_astm_specifications,
@@ -20,8 +23,8 @@ from hermes.services.material_parsing.universal import (
     extract_material_base,
     extract_schedule,
     extract_thickness,
+    format_decimal_inches,
     format_inches,
-    schedule_thickness_conflict,
 )
 
 FLANGE_TYPES = (
@@ -113,22 +116,19 @@ class FlangeExtractor:
             if not present and (field != "cedula_o_espesor" or schedule_applies)
         )
 
-        diameter_value = attributes.get("diametro")
-        schedule_number = attributes.get("cedula_num")
-        thickness_value = attributes.get("espesor")
-        if schedule_thickness_conflict(
-            diameter_value if isinstance(diameter_value, float) else None,
-            schedule_number if isinstance(schedule_number, int) else None,
-            thickness_value if isinstance(thickness_value, float) else None,
-        ):
-            warnings.append("schedule_thickness_conflict")
+        if schedule_applies:
+            add_resolved_thickness(attributes, warnings)
 
         diameter_key = (
             format_inches(attributes["diametro"], 8)
             if "diametro" in attributes
             else None
         )
-        schedule_key = attributes.get("cedula_num") or attributes.get("cedula_alias")
+        thickness_key = (
+            format_decimal_inches(attributes["espesor_pared_in"])
+            if "espesor_pared_in" in attributes
+            else None
+        )
         common_parts = (
             "BRIDA",
             canonical_part("tipo", type_value),
@@ -136,7 +136,7 @@ class FlangeExtractor:
             canonical_part("clase", attributes.get("clase")),
         )
         if type_value == "WN":
-            common_parts += (canonical_part("cedula", schedule_key),)
+            common_parts += (canonical_part("espesor_pared", thickness_key),)
         common_parts += (
             canonical_part("cara", attributes.get("cara")),
             canonical_part("material", attributes.get("material_base")),

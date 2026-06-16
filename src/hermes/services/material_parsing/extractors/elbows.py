@@ -10,6 +10,9 @@ from hermes.services.material_parsing.extractors.common import (
     canonical_part,
 )
 from hermes.services.material_parsing.normalizer import NormalizedText
+from hermes.services.material_parsing.thickness_resolver import (
+    add_resolved_thickness,
+)
 from hermes.services.material_parsing.universal import (
     ExtractedValue,
     extract_astm_specifications,
@@ -19,8 +22,8 @@ from hermes.services.material_parsing.universal import (
     extract_material_base,
     extract_schedule,
     extract_thickness,
+    format_decimal_inches,
     format_inches,
-    schedule_thickness_conflict,
 )
 
 
@@ -130,16 +133,6 @@ class ElbowExtractor:
             if not present
         )
 
-        diameter_value = attributes.get("diametro")
-        schedule_number = attributes.get("cedula_num")
-        thickness_value = attributes.get("espesor")
-        if schedule_thickness_conflict(
-            diameter_value if isinstance(diameter_value, float) else None,
-            schedule_number if isinstance(schedule_number, int) else None,
-            thickness_value if isinstance(thickness_value, float) else None,
-        ):
-            warnings.append("schedule_thickness_conflict")
-
         diameter_key = (
             format_inches(attributes["diametro"], 8)
             if "diametro" in attributes
@@ -147,6 +140,13 @@ class ElbowExtractor:
         )
         is_butt_weld = schedule is not None or any(
             item.value == "ASME B16.9" for item in standards
+        ) or (ends is not None and ends.value == "BW")
+        if is_butt_weld:
+            add_resolved_thickness(attributes, warnings)
+        thickness_key = (
+            format_decimal_inches(attributes["espesor_pared_in"])
+            if "espesor_pared_in" in attributes
+            else None
         )
         if is_butt_weld:
             parts = (
@@ -154,10 +154,7 @@ class ElbowExtractor:
                 canonical_part("angulo", attributes.get("angulo")),
                 canonical_part("radio", attributes.get("radio")),
                 canonical_part("diametro", diameter_key),
-                canonical_part(
-                    "cedula",
-                    attributes.get("cedula_num") or attributes.get("cedula_alias"),
-                ),
+                canonical_part("espesor_pared", thickness_key),
                 canonical_part("material", attributes.get("material_base")),
                 canonical_part("astm", attributes.get("especificacion_material")),
                 canonical_part("norma", "ASME B16.9"),
