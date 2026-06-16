@@ -10,6 +10,7 @@ Hermes es una herramienta para apoyar la conciliacion de materiales entre requer
 - Empaques
 - Tuberia
 - Bridas
+- Codos
 
 ## Enfoque del MVP
 

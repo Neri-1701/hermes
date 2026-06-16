@@ -21,6 +21,7 @@ class MappingField:
     key: str
     label: str
     source: DataSource
+    required: bool = True
 
 
 MAPPING_FIELDS = (
@@ -53,6 +54,12 @@ MAPPING_FIELDS = (
         key="requirements_description",
         label="Columna de descripcion solicitada",
         source=DataSource.REQUIREMENTS,
+    ),
+    MappingField(
+        key="requirements_item_description",
+        label="Descripcion de partida de respaldo (opcional)",
+        source=DataSource.REQUIREMENTS,
+        required=False,
     ),
     MappingField(
         key="requirements_quantity",

@@ -46,9 +46,10 @@ def _complete_state() -> HermesState:
 
 def test_reports_missing_files_and_mappings() -> None:
     result = SetupValidator().validate(HermesState())
+    required_fields = sum(field.required for field in MAPPING_FIELDS)
 
     assert not result.is_valid
-    assert len(result.errors) == 2 + len(MAPPING_FIELDS)
+    assert len(result.errors) == 2 + required_fields
 
 
 def test_accepts_complete_setup() -> None:
@@ -56,6 +57,15 @@ def test_accepts_complete_setup() -> None:
 
     assert result.is_valid
     assert result.errors == ()
+
+
+def test_optional_backup_description_is_not_required() -> None:
+    state = _complete_state()
+
+    result = SetupValidator().validate(state)
+
+    assert "requirements_item_description" not in state.mappings
+    assert result.is_valid
 
 
 def test_rejects_mapping_not_present_in_source_file() -> None:

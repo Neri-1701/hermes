@@ -5,7 +5,9 @@ import pandas as pd
 from hermes.application import create_application
 from hermes.config import APP_TITLE
 from hermes.domain.models import DataSource
+from hermes.domain.reconciliation import ReconciliationStatus
 from hermes.ui.main_window import MainWindow
+from PySide6.QtWidgets import QMessageBox
 
 
 def test_main_window_can_be_created() -> None:
@@ -96,5 +98,143 @@ def test_main_window_switches_between_loaded_previews(tmp_path: Path) -> None:
         == "inventory_code"
     )
     assert "inventario" in window.status_label.text()
+
+    window.close()
+
+
+def test_optional_backup_mapping_can_be_cleared(tmp_path: Path) -> None:
+    requirements_path = tmp_path / "requirements.xlsx"
+    pd.DataFrame(
+        {
+            "material": ["Material"],
+            "partida": ["Partida"],
+        }
+    ).to_excel(requirements_path, index=False)
+    create_application(["hermes-test"])
+    window = MainWindow()
+    window.load_dataset(requirements_path, DataSource.REQUIREMENTS)
+    combo = window._panels[DataSource.REQUIREMENTS]._combos[
+        "requirements_item_description"
+    ]
+
+    combo.setCurrentIndex(combo.findData("partida"))
+
+    assert window._state.mappings["requirements_item_description"] == "partida"
+
+    combo.setCurrentIndex(combo.findData(""))
+
+    assert "requirements_item_description" not in window._state.mappings
+
+    window.close()
+
+
+def test_main_window_quick_search_needs_only_inventory(tmp_path: Path) -> None:
+    description = (
+        "ESPARRAGO ASTM A193/A193M GRADO B7, "
+        'DE 3/4" DE DIAMETRO NOMINAL X 5" DE LONGITUD'
+    )
+    inventory_path = tmp_path / "inventory.xlsx"
+    pd.DataFrame(
+        {
+            "description": [description],
+            "code": ["E-1"],
+            "available": [5],
+        }
+    ).to_excel(inventory_path, index=False)
+    create_application(["hermes-test"])
+    window = MainWindow()
+    window.load_dataset(inventory_path, DataSource.INVENTORY)
+    for key, value in {
+        "inventory_description": "description",
+        "inventory_code": "code",
+        "inventory_quantity": "available",
+    }.items():
+        window._set_mapping(key, value)
+
+    window.search_input.setText(description)
+    window.search_button.click()
+
+    assert window._state.dataset_for(DataSource.REQUIREMENTS) is None
+    assert window.preview_source_combo.currentData() == (
+        window.QUICK_SEARCH_RESULTS
+    )
+    assert window.preview_model.rowCount() == 1
+    assert "1 coincidencias" in window.status_label.text()
+    assert window.preview_source_combo.count() == 2
+
+    window.close()
+
+
+def test_main_window_segments_and_searches_inventory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    description = (
+        "ESPARRAGO ASTM A193/A193M GRADO B7, "
+        'DE 3/4" DE DIAMETRO NOMINAL X 5" DE LONGITUD'
+    )
+    inventory_path = tmp_path / "inventory.xlsx"
+    requirements_path = tmp_path / "requirements.xlsx"
+    pd.DataFrame(
+        {
+            "description": [description],
+            "code": ["E-1"],
+            "available": [5],
+        }
+    ).to_excel(inventory_path, index=False)
+    pd.DataFrame(
+        {
+            "udc": ["U-1"],
+            "date": ["2026-06-15"],
+            "description": [description],
+            "required": [2],
+        }
+    ).to_excel(requirements_path, index=False)
+    create_application(["hermes-test"])
+    window = MainWindow()
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Ok,
+    )
+
+    window.load_dataset(inventory_path, DataSource.INVENTORY)
+    window.load_dataset(requirements_path, DataSource.REQUIREMENTS)
+    mappings = {
+        "inventory_description": "description",
+        "inventory_code": "code",
+        "inventory_quantity": "available",
+        "requirements_udc": "udc",
+        "requirements_date": "date",
+        "requirements_description": "description",
+        "requirements_quantity": "required",
+    }
+    for key, value in mappings.items():
+        window._set_mapping(key, value)
+
+    window.process_button.click()
+
+    report = window._state.reconciliation_report
+    assert report is not None
+    assert report.matches.iloc[0]["estado"] == (
+        ReconciliationStatus.COVERED.value
+    )
+    assert window.preview_source_combo.count() == 5
+    assert window.preview_source_combo.currentData() == window.MATCH_RESULTS
+    assert window.preview_model.rowCount() == 1
+    assert "Cruce de inventario" in window.status_label.text()
+
+    requirement_index = window.preview_source_combo.findData(
+        window.REQUIREMENT_SEGMENTATION
+    )
+    window.preview_source_combo.setCurrentIndex(requirement_index)
+
+    assert "Requerimientos segmentados" in window.status_label.text()
+    assert window.preview_model.rowCount() == 1
+
+    window._set_mapping("requirements_quantity", "")
+
+    assert window._state.reconciliation_report is None
+    assert window.preview_source_combo.count() == 2
 
     window.close()

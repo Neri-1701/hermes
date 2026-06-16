@@ -1,13 +1,12 @@
-# Hermes
+# Hermes 0.4.0
 
-Hermes es una aplicacion de escritorio para preparar la conciliacion de
-materiales entre requerimientos de ingenieria e inventario disponible.
+Hermes es una aplicacion para segmentar y conciliar materiales entre
+requerimientos de ingenieria e inventario disponible. La version 0.4.0 integra
+el parser tecnico trazable con busqueda y asignacion de existencias.
 
-## Alcance del Sprint 1
+## Alcance actual
 
-El Sprint 1 no incluye todavia el motor de interpretacion dimensional ni la asignacion automatica de inventario. Esos elementos pertenecen al Sprint 2.
-
-El incremento de Sprint 1 incluye:
+La aplicacion conserva las funciones de carga y configuracion del Sprint 1:
 
 - Carga de archivo de inventario en formato `.xlsx`.
 - Carga de archivo de requerimientos en formato `.xlsx`.
@@ -17,6 +16,23 @@ El incremento de Sprint 1 incluye:
 - Validacion de configuracion minima.
 - Interfaz base para usuarios no tecnicos.
 - Documentacion inicial del marco Scrum.
+
+Hermes 0.4.0 tambien incluye:
+
+- Normalizacion controlada sin destruir el texto original.
+- Localizacion ordenada de ESPARRAGOS, EMPAQUES, TUBERIA, BRIDAS y CODOS.
+- Extractores independientes por familia.
+- Parsers compartidos de pulgadas, clase, cedula, espesor, material y normas.
+- Llaves canonicas comparables por familia.
+- `confidence_score`, warnings y evidencia con posiciones en el texto original.
+- Uso de `Data_DescripcionPartida` solo como respaldo de
+  `Data_DescripcionMaterial`.
+- Cruce tecnico entre requerimientos e inventario por atributos de familia.
+- Descuento secuencial de existencias para evitar asignaciones duplicadas.
+- Coincidencias parciales visibles para revision, sin descuento automatico.
+- Vistas de cruce, segmentacion de requerimientos y segmentacion de inventario.
+
+El predictor de valvulas no forma parte de esta entrega.
 
 ## Arquitectura
 
@@ -33,6 +49,9 @@ hermes/
 │       ├── config.py
 │       ├── domain/
 │       ├── services/
+│       │   ├── material_parser.py
+│       │   ├── reconciliation.py
+│       │   └── material_parsing/
 │       └── ui/
 └── tests/
 ```
@@ -50,6 +69,11 @@ validacion de datos, y `ui` solo se ocupa de la interfaz PySide6.
    el dataframe completo.
 4. `SetupValidator` comprueba que ambos archivos y todos los mapeos requeridos
    esten disponibles antes del siguiente procesamiento.
+5. `MaterialParser` normaliza, localiza la familia, ejecuta un solo extractor,
+   genera la llave canonica y valida la confianza del resultado.
+6. `ReconciliationService` segmenta ambos origenes, busca compatibilidad
+   tecnica y asigna solamente coincidencias exactas.
+7. La interfaz presenta el cruce y los saldos resultantes en la misma tabla.
 
 Los archivos `.xlsx` sin filas se rechazan. Tambien se rechazan encabezados
 duplicados despues de eliminar espacios al inicio y al final, porque producirian
@@ -99,6 +123,55 @@ pytest
 
 Las pruebas usan el backend `offscreen` de Qt, por lo que no abren ventanas.
 
+## Parser de materiales
+
+El servicio puede procesar una descripcion individual:
+
+```python
+from hermes.services import MaterialParser
+
+result = MaterialParser().parse_description(
+    'TUBO, DE 2" DE DIAMETRO NOMINAL, CEDULA 80, '
+    "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B",
+    source_row=2,
+)
+
+payload = result.to_dict()
+```
+
+Tambien puede procesar un dataframe completo. Por defecto busca
+`Data_DescripcionMaterial` y usa `Data_DescripcionPartida` como respaldo:
+
+```python
+results = MaterialParser().parse_dataframe(dataframe)
+rows = [result.to_dict() for result in results]
+```
+
+## Cruce de inventario
+
+El cruce usa los mapeos seleccionados en la interfaz. Una coincidencia se
+considera exacta solo cuando los atributos tecnicos relevantes de la familia
+coinciden y ninguna descripcion presenta warnings bloqueantes.
+
+- Las coincidencias exactas descuentan inventario en orden de requerimiento.
+- Un requerimiento puede cubrirse con varios renglones de inventario.
+- El saldo disponible se conserva por codigo y fila de origen.
+- Las coincidencias parciales se muestran como `REVISION_REQUERIDA`, pero no
+  reservan ni descuentan existencias.
+- Los conflictos de cedula/espesor, dimensiones ambiguas y materiales no
+  segmentados nunca se asignan automaticamente.
+
+## Busqueda rapida
+
+La barra `Busqueda rapida` interpreta una descripcion escrita por el usuario
+con el mismo parser y las mismas reglas tecnicas del cruce. Solo requiere el
+archivo de inventario y sus columnas de descripcion, codigo y cantidad.
+
+- Busca ESPARRAGOS, EMPAQUES, TUBERIA, BRIDAS y CODOS.
+- Presenta coincidencias exactas y parciales ordenadas por score.
+- Muestra cantidad disponible, llave canonica y warnings de ambas partes.
+- No descuenta ni reserva inventario.
+
 ## Uso
 
 1. Ejecutar la aplicacion.
@@ -106,15 +179,19 @@ Las pruebas usan el backend `offscreen` de Qt, por lo que no abren ventanas.
 3. Cargar el archivo de requerimientos.
 4. Alternar entre ambos archivos con el selector de la vista previa.
 5. Seleccionar columnas relevantes de ambos archivos.
-6. Validar la configuracion.
-7. Activar opcionalmente `Configuracion > Modo oscuro`.
-8. Confirmar que la informacion esta lista para el siguiente procesamiento.
+6. Seleccionar opcionalmente una descripcion de partida como respaldo.
+7. Pulsar `Segmentar y buscar inventario`.
+8. Revisar `Cruce de inventario`, `Segmentacion de requerimientos` y
+   `Segmentacion de inventario` en el selector de vistas.
+9. Usar `Busqueda rapida` para consultar materiales sin ejecutar el cruce.
+10. Activar opcionalmente `Configuracion > Modo oscuro`.
 
 Limpiar la vista previa solo vacia la tabla visible; no elimina los archivos ni
-los mapeos ya cargados.
+los mapeos ya cargados. Cambiar un archivo o mapeo invalida el cruce anterior.
 
 ## Roadmap inmediato
 
-- Sprint 1: carga de datos, configuracion e interfaz base.
-- Sprint 2: extraccion dimensional y motor de conciliacion.
-- Sprint 3: reportes, validacion, documentacion y demo final.
+- Validar llaves canonicas contra inventario real.
+- Ampliar diccionarios de materiales y aliases.
+- Agregar exportacion de resultados y resumen por UDC.
+- Incorporar valvulas y su predictor en una segunda fase.
