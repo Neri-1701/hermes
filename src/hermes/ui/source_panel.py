@@ -6,14 +6,17 @@ from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QFormLayout,
+    QFrame,
     QGroupBox,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from hermes.config import MappingField
@@ -39,8 +42,9 @@ class SourcePanel(QGroupBox):
         self._required: dict[str, bool] = {}
 
         self.setTitle(f"Archivo de {source.display_name}")
+        self.setMinimumHeight(214)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 18, 14, 14)
+        layout.setContentsMargins(14, 22, 14, 12)
         layout.setSpacing(10)
 
         load_button = QPushButton(f"Cargar {source.display_name} (.xlsx)")
@@ -53,12 +57,35 @@ class SourcePanel(QGroupBox):
         self.path_label.setWordWrap(True)
         layout.addWidget(self.path_label)
 
-        form = QFormLayout()
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(10)
+        form_container = QWidget()
+        form_container.setObjectName("mappingFormContainer")
+        form = QVBoxLayout(form_container)
+        form.setContentsMargins(2, 2, 6, 2)
+        form.setSpacing(8)
         for field in fields:
+            row = QFrame()
+            row.setObjectName("mappingFieldRow")
+            row_layout = QVBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+
+            label = QLabel(field.label)
+            label.setObjectName("mappingFieldLabel")
+            label.setWordWrap(True)
+            row_layout.addWidget(label)
+
             combo = QComboBox()
+            combo.setObjectName("mappingCombo")
             combo.setEnabled(False)
+            combo.setFixedHeight(32)
+            combo.setMinimumWidth(180)
+            combo.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
             combo.setPlaceholderText(
                 "Selecciona una columna"
                 if field.required
@@ -69,9 +96,19 @@ class SourcePanel(QGroupBox):
             )
             self._combos[field.key] = combo
             self._required[field.key] = field.required
-            form.addRow(field.label, combo)
-        layout.addLayout(form)
-        layout.addStretch()
+            row_layout.addWidget(combo)
+            form.addWidget(row)
+        form.addStretch()
+
+        scroll_area = QScrollArea()
+        scroll_area.setObjectName("mappingScrollArea")
+        scroll_area.setMinimumHeight(74)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_area.setWidget(form_container)
+        layout.addWidget(scroll_area, stretch=1)
 
     def _emit_mapping(
         self,

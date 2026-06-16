@@ -7,7 +7,7 @@ from hermes.config import APP_TITLE
 from hermes.domain.models import DataSource
 from hermes.domain.reconciliation import ReconciliationStatus
 from hermes.ui.main_window import MainWindow
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 
 def test_main_window_can_be_created() -> None:
@@ -39,6 +39,26 @@ def test_main_window_toggles_dark_mode() -> None:
     window.dark_mode_action.setChecked(False)
 
     assert window.styleSheet() == light_styles
+
+    window.close()
+
+
+def test_main_window_can_hide_configuration_panel() -> None:
+    create_application(["hermes-test"])
+    window = MainWindow()
+
+    assert not window.configuration_panel.isHidden()
+    assert window.configuration_toggle_button.text() == "Ocultar config."
+
+    window.configuration_toggle_button.click()
+
+    assert window.configuration_panel.isHidden()
+    assert window.configuration_toggle_button.text() == "Mostrar config."
+
+    window.configuration_toggle_button.click()
+
+    assert not window.configuration_panel.isHidden()
+    assert window.configuration_toggle_button.text() == "Ocultar config."
 
     window.close()
 
@@ -161,6 +181,82 @@ def test_main_window_quick_search_needs_only_inventory(tmp_path: Path) -> None:
     assert window.preview_model.rowCount() == 1
     assert "1 coincidencias" in window.status_label.text()
     assert window.preview_source_combo.count() == 2
+    assert not window.export_report_button.isEnabled()
+
+    window.close()
+
+
+def test_main_window_exports_segmentation_report(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    description = (
+        "ESPARRAGO ASTM A193/A193M GRADO B7, "
+        'DE 3/4" DE DIAMETRO NOMINAL X 5" DE LONGITUD'
+    )
+    inventory_path = tmp_path / "inventory.xlsx"
+    requirements_path = tmp_path / "requirements.xlsx"
+    report_path = tmp_path / "segmentation_report.xlsx"
+    pd.DataFrame(
+        {
+            "description": [description],
+            "code": ["E-1"],
+            "available": [5],
+        }
+    ).to_excel(inventory_path, index=False)
+    pd.DataFrame(
+        {
+            "udc": ["U-1"],
+            "date": ["2026-06-15"],
+            "description": [description],
+            "required": [2],
+        }
+    ).to_excel(requirements_path, index=False)
+    create_application(["hermes-test"])
+    window = MainWindow()
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(report_path), "Archivos Excel (*.xlsx)"),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Ok,
+    )
+
+    window.load_dataset(inventory_path, DataSource.INVENTORY)
+    window.load_dataset(requirements_path, DataSource.REQUIREMENTS)
+    mappings = {
+        "inventory_description": "description",
+        "inventory_code": "code",
+        "inventory_quantity": "available",
+        "requirements_udc": "udc",
+        "requirements_date": "date",
+        "requirements_description": "description",
+        "requirements_quantity": "required",
+    }
+    for key, value in mappings.items():
+        window._set_mapping(key, value)
+
+    assert not window.export_report_button.isEnabled()
+    assert window.run_reconciliation()
+    assert window.export_report_button.isEnabled()
+    assert window.export_reconciliation_report()
+
+    sheets = pd.read_excel(report_path, sheet_name=None)
+    assert set(sheets) == {
+        "Resumen",
+        "Cruce",
+        "Req segmentados",
+        "Inv segmentado",
+    }
+    assert sheets["Resumen"].loc[0, "Valor"] == (
+        "Segmentacion y cruce de materiales"
+    )
+    assert sheets["Cruce"].loc[0, "codigos_inventario"] == "E-1"
+    assert sheets["Req segmentados"].loc[0, "udc"] == "U-1"
+    assert sheets["Inv segmentado"].loc[0, "codigo"] == "E-1"
 
     window.close()
 
