@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 import pandas as pd
@@ -26,6 +26,7 @@ class ReconciliationReport:
     matches: pd.DataFrame
     requirements: pd.DataFrame
     inventory: pd.DataFrame
+    user_report: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @property
     def requirement_count(self) -> int:

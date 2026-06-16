@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from functools import partial
 from pathlib import Path
 
@@ -36,6 +35,7 @@ from hermes.config import (
     WINDOW_WIDTH,
 )
 from hermes.domain.models import DataSource, HermesState
+from hermes.services.column_mapping import ColumnMappingPreferences
 from hermes.services.excel_reader import DataLoadError, ExcelReader
 from hermes.services.reconciliation import (
     ReconciliationError,
@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
     """Coordinate spreadsheet loading, mapping, preview, and validation."""
 
     MATCH_RESULTS = "result:matches"
+    USER_REPORT = "result:user_report"
     REQUIREMENT_SEGMENTATION = "result:requirements"
     INVENTORY_SEGMENTATION = "result:inventory"
     QUICK_SEARCH_RESULTS = "result:search"
@@ -59,6 +60,7 @@ class MainWindow(QMainWindow):
         excel_reader: ExcelReader | None = None,
         validator: SetupValidator | None = None,
         reconciler: ReconciliationService | None = None,
+        mapping_preferences: ColumnMappingPreferences | None = None,
         parent=None,
     ) -> None:
         """Create the window with optional service dependencies for testing."""
@@ -66,10 +68,12 @@ class MainWindow(QMainWindow):
         self._reader = excel_reader or ExcelReader()
         self._validator = validator or SetupValidator()
         self._reconciler = reconciler or ReconciliationService()
+        self._mapping_preferences = (
+            mapping_preferences or ColumnMappingPreferences()
+        )
         self._state = HermesState()
         self._panels: dict[DataSource, SourcePanel] = {}
         self._search_results = None
-        self._search_query = ""
         self._configuration_splitter_sizes = [260, 420]
         self._dark_mode = False
 
@@ -296,9 +300,22 @@ class MainWindow(QMainWindow):
         panel = self._panels[source]
         panel.clear_mappings()
         panel.set_dataset(dataset.path, dataset.columns)
+        self._auto_select_mappings(source, dataset.columns)
         self._add_preview_source(source)
         self._select_preview_source(source)
         return True
+
+    def _auto_select_mappings(
+        self,
+        source: DataSource,
+        columns: tuple[str, ...],
+    ) -> None:
+        panel = self._panels[source]
+        fields = [field for field in MAPPING_FIELDS if field.source == source]
+        for field in fields:
+            suggestion = self._mapping_preferences.suggest(field, columns)
+            if suggestion:
+                panel.select_column(field.key, suggestion)
 
     def _add_preview_source(self, source: DataSource) -> None:
         if self.preview_source_combo.findData(source.value) < 0:
@@ -398,7 +415,6 @@ class MainWindow(QMainWindow):
             return False
 
         self._search_results = results
-        self._search_query = query_text
         if self.preview_source_combo.findData(self.QUICK_SEARCH_RESULTS) < 0:
             self.preview_source_combo.addItem(
                 "Busqueda rapida",
@@ -460,31 +476,10 @@ class MainWindow(QMainWindow):
         if report is None:
             return
 
-        summary = pd.DataFrame(
-            [
-                ("Reporte", "Segmentacion y cruce de materiales"),
-                ("Resumen", report.build_summary()),
-                ("Filas de cruce", len(report.matches)),
-                ("Requerimientos segmentados", len(report.requirements)),
-                ("Inventario segmentado", len(report.inventory)),
-                (
-                    "Generado",
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                ),
-            ],
-            columns=["Campo", "Valor"],
-        )
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
-            summary.to_excel(writer, sheet_name="Resumen", index=False)
-            report.matches.to_excel(writer, sheet_name="Cruce", index=False)
-            report.requirements.to_excel(
+            report.user_report.to_excel(
                 writer,
-                sheet_name="Req segmentados",
-                index=False,
-            )
-            report.inventory.to_excel(
-                writer,
-                sheet_name="Inv segmentado",
+                sheet_name="Requerimientos",
                 index=False,
             )
             for worksheet in writer.sheets.values():
@@ -497,10 +492,12 @@ class MainWindow(QMainWindow):
 
     def _set_mapping(self, field_key: str, column: str) -> None:
         self._state.set_mapping(field_key, column)
+        self._mapping_preferences.remember(field_key, column)
         self._remove_result_views()
 
     def _add_result_views(self) -> None:
         result_views = (
+            ("Reporte final", self.USER_REPORT),
             ("Cruce de inventario", self.MATCH_RESULTS),
             ("Segmentacion de requerimientos", self.REQUIREMENT_SEGMENTATION),
             ("Segmentacion de inventario", self.INVENTORY_SEGMENTATION),
@@ -512,7 +509,6 @@ class MainWindow(QMainWindow):
 
     def _remove_result_views(self) -> None:
         self._search_results = None
-        self._search_query = ""
         self.export_report_button.setEnabled(False)
         for index in range(self.preview_source_combo.count() - 1, -1, -1):
             value = self.preview_source_combo.itemData(index)
@@ -545,6 +541,10 @@ class MainWindow(QMainWindow):
         if report is None:
             return
         views = {
+            self.USER_REPORT: (
+                report.user_report,
+                f"Reporte final: {len(report.user_report)} filas",
+            ),
             self.MATCH_RESULTS: (
                 report.matches,
                 f"Cruce de inventario: {report.build_summary()}",

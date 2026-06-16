@@ -10,7 +10,7 @@ La aplicacion conserva las funciones de carga y configuracion del Sprint 1:
 
 - Carga de archivo de inventario en formato `.xlsx`.
 - Carga de archivo de requerimientos en formato `.xlsx`.
-- Seleccion dinamica de columnas relevantes.
+- Seleccion dinamica de columnas relevantes con sugerencia automatica.
 - Vista previa de los datos cargados.
 - Selector de tema claro u oscuro desde el menu de configuracion.
 - Validacion de configuracion minima.
@@ -31,6 +31,8 @@ Hermes 0.4.0 tambien incluye:
 - Descuento secuencial de existencias para evitar asignaciones duplicadas.
 - Coincidencias parciales visibles para revision, sin descuento automatico.
 - Vistas de cruce, segmentacion de requerimientos y segmentacion de inventario.
+- Reporte final para usuario basado en el archivo de requerimientos original,
+  con columnas de codigos, descripciones y cantidades asignadas.
 
 El predictor de valvulas no forma parte de esta entrega.
 
@@ -65,15 +67,18 @@ validacion de datos, y `ui` solo se ocupa de la interfaz PySide6.
    `LoadedDataset`.
 2. `HermesState` conserva un dataset por origen y los mapeos elegidos por el
    usuario.
-3. `DataFrameTableModel` limita la cantidad de filas mostradas sin modificar
+3. `ColumnMappingPreferences` sugiere mapeos por palabras clave y recuerda la
+   ultima seleccion valida del usuario en `~/.hermes/column_mappings.json`.
+4. `DataFrameTableModel` limita la cantidad de filas mostradas sin modificar
    el dataframe completo.
-4. `SetupValidator` comprueba que ambos archivos y todos los mapeos requeridos
+5. `SetupValidator` comprueba que ambos archivos y todos los mapeos requeridos
    esten disponibles antes del siguiente procesamiento.
-5. `MaterialParser` normaliza, localiza la familia, ejecuta un solo extractor,
+6. `MaterialParser` normaliza, localiza la familia, ejecuta un solo extractor,
    genera la llave canonica y valida la confianza del resultado.
-6. `ReconciliationService` segmenta ambos origenes, busca compatibilidad
+7. `ReconciliationService` segmenta ambos origenes, busca compatibilidad
    tecnica y asigna solamente coincidencias exactas.
-7. La interfaz presenta el cruce y los saldos resultantes en la misma tabla.
+8. La interfaz presenta el cruce, el reporte final y los saldos resultantes en
+   la misma tabla.
 
 Los archivos `.xlsx` sin filas se rechazan. Tambien se rechazan encabezados
 duplicados despues de eliminar espacios al inicio y al final, porque producirian
@@ -153,6 +158,10 @@ El cruce usa los mapeos seleccionados en la interfaz. Una coincidencia se
 considera exacta solo cuando los atributos tecnicos relevantes de la familia
 coinciden y ninguna descripcion presenta warnings bloqueantes.
 
+- Inventario requiere descripcion, codigo y cantidad disponible.
+- Requerimientos requiere solo descripcion solicitada y cantidad requerida.
+- Las demas columnas del archivo de requerimientos se conservan como
+  informacion del reporte final, sin pedir mapeos adicionales.
 - Las coincidencias exactas descuentan inventario en orden de requerimiento.
 - Un requerimiento puede cubrirse con varios renglones de inventario.
 - El saldo disponible se conserva por codigo y fila de origen.
@@ -160,6 +169,33 @@ coinciden y ninguna descripcion presenta warnings bloqueantes.
   reservan ni descuentan existencias.
 - Los conflictos de cedula/espesor, dimensiones ambiguas y materiales no
   segmentados nunca se asignan automaticamente.
+
+## Reportes
+
+Desde la interfaz, `Exportar reporte` genera un Excel practico para el usuario
+final. La hoja `Requerimientos` conserva las columnas originales del archivo de
+requerimientos y agrega:
+
+- `estado_asignacion`
+- `codigo(s) asignado(s)`
+- `descripcion(es) asignada(s)`
+- `cantidad(es) asignada(s)`
+- `cantidad_total_asignada`
+- `cantidad_faltante`
+
+El reporte tecnico con hojas de cruce, segmentacion de requerimientos y
+segmentacion de inventario queda como script de desarrollo:
+
+```bash
+.venv/bin/python scripts/export_reconciliation_debug_report.py \
+  inventario.xlsx requerimientos.xlsx \
+  --output debug_reconciliacion_hermes.xlsx \
+  --inventory-description description \
+  --inventory-code code \
+  --inventory-quantity available \
+  --requirements-description description \
+  --requirements-quantity required
+```
 
 ## Busqueda rapida
 
@@ -178,11 +214,12 @@ archivo de inventario y sus columnas de descripcion, codigo y cantidad.
 2. Cargar el archivo de inventario.
 3. Cargar el archivo de requerimientos.
 4. Alternar entre ambos archivos con el selector de la vista previa.
-5. Seleccionar columnas relevantes de ambos archivos.
-6. Seleccionar opcionalmente una descripcion de partida como respaldo.
-7. Pulsar `Segmentar y buscar inventario`.
-8. Revisar `Cruce de inventario`, `Segmentacion de requerimientos` y
-   `Segmentacion de inventario` en el selector de vistas.
+5. Revisar o corregir las columnas sugeridas automaticamente.
+6. Pulsar `Segmentar`.
+7. Revisar `Reporte final`, `Cruce de inventario`,
+   `Segmentacion de requerimientos` y `Segmentacion de inventario` en el
+   selector de vistas.
+8. Usar `Exportar reporte` para generar el Excel final de requerimientos.
 9. Usar `Busqueda rapida` para consultar materiales sin ejecutar el cruce.
 10. Activar opcionalmente `Configuracion > Modo oscuro`.
 

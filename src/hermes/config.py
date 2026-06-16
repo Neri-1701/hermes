@@ -22,6 +22,7 @@ class MappingField:
     label: str
     source: DataSource
     required: bool = True
+    keywords: tuple[str, ...] = ()
 
 
 MAPPING_FIELDS = (
@@ -29,41 +30,67 @@ MAPPING_FIELDS = (
         key="inventory_description",
         label="Columna de descripcion",
         source=DataSource.INVENTORY,
+        keywords=(
+            "descripcion",
+            "description",
+            "material",
+            "larga",
+            "long",
+            "detalle",
+        ),
     ),
     MappingField(
         key="inventory_code",
         label="Columna de codigo de material",
         source=DataSource.INVENTORY,
+        keywords=(
+            "codigo",
+            "code",
+            "material",
+            "item",
+            "clave",
+            "sku",
+        ),
     ),
     MappingField(
         key="inventory_quantity",
         label="Columna de cantidad disponible",
         source=DataSource.INVENTORY,
-    ),
-    MappingField(
-        key="requirements_udc",
-        label="Columna UDC",
-        source=DataSource.REQUIREMENTS,
-    ),
-    MappingField(
-        key="requirements_date",
-        label="Columna de fecha de programa",
-        source=DataSource.REQUIREMENTS,
+        keywords=(
+            "cantidad",
+            "quantity",
+            "disponible",
+            "available",
+            "existencia",
+            "stock",
+            "saldo",
+        ),
     ),
     MappingField(
         key="requirements_description",
         label="Columna de descripcion solicitada",
         source=DataSource.REQUIREMENTS,
-    ),
-    MappingField(
-        key="requirements_item_description",
-        label="Descripcion de partida de respaldo (opcional)",
-        source=DataSource.REQUIREMENTS,
-        required=False,
+        keywords=(
+            "descripcion",
+            "description",
+            "material",
+            "solicitada",
+            "requerida",
+            "larga",
+            "long",
+        ),
     ),
     MappingField(
         key="requirements_quantity",
         label="Columna de cantidad requerida",
         source=DataSource.REQUIREMENTS,
+        keywords=(
+            "cantidad",
+            "quantity",
+            "requerida",
+            "required",
+            "solicitada",
+            "qty",
+        ),
     ),
 )

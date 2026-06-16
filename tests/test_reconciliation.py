@@ -62,8 +62,6 @@ def _state(
         "inventory_description": "description",
         "inventory_code": "code",
         "inventory_quantity": "available",
-        "requirements_udc": "udc",
-        "requirements_date": "date",
         "requirements_description": "description",
         "requirements_quantity": "required",
     }
@@ -233,6 +231,11 @@ def test_allocates_exact_matches_without_reusing_inventory() -> None:
     assert report.inventory["cantidad_restante"].sum() == 0
     assert report.matches.iloc[0]["codigos_inventario"] == "E-2, E-1"
     assert report.matches.iloc[0]["asignaciones_inventario"] == (
+        "E-2: 4; E-1: 1"
+    )
+    assert report.user_report["udc"].tolist() == ["U-1", "U-2"]
+    assert report.user_report.iloc[0]["codigo(s) asignado(s)"] == "E-2, E-1"
+    assert report.user_report.iloc[0]["cantidad(es) asignada(s)"] == (
         "E-2: 4; E-1: 1"
     )
 

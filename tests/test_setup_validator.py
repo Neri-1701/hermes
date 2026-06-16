@@ -34,8 +34,6 @@ def _complete_state() -> HermesState:
         "inventory_description": "description",
         "inventory_code": "code",
         "inventory_quantity": "available",
-        "requirements_udc": "udc",
-        "requirements_date": "date",
         "requirements_description": "description",
         "requirements_quantity": "required",
     }
@@ -59,12 +57,13 @@ def test_accepts_complete_setup() -> None:
     assert result.errors == ()
 
 
-def test_optional_backup_description_is_not_required() -> None:
+def test_requirement_information_columns_are_not_required() -> None:
     state = _complete_state()
 
     result = SetupValidator().validate(state)
 
-    assert "requirements_item_description" not in state.mappings
+    assert "requirements_udc" not in state.mappings
+    assert "requirements_date" not in state.mappings
     assert result.is_valid
 
 

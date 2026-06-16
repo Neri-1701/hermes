@@ -134,6 +134,17 @@ class SourcePanel(QGroupBox):
             combo.setEnabled(True)
             combo.blockSignals(False)
 
+    def select_column(self, field_key: str, column: str) -> bool:
+        """Select a mapped column if the selector contains it."""
+        combo = self._combos.get(field_key)
+        if combo is None:
+            return False
+        index = combo.findData(column)
+        if index < 0:
+            return False
+        combo.setCurrentIndex(index)
+        return True
+
     def clear_mappings(self) -> None:
         """Clear each selector and notify application state explicitly."""
         for key, combo in self._combos.items():

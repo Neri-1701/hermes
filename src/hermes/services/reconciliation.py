@@ -89,15 +89,22 @@ class ReconciliationService:
             )
             for requirement in requirements
         ]
+        matches = pd.DataFrame(match_rows)
+        requirement_segmentation = pd.DataFrame(
+            self._requirement_segmentation_row(requirement)
+            for requirement in requirements
+        )
+        inventory_segmentation = pd.DataFrame(
+            self._inventory_segmentation_row(record)
+            for record in inventory
+        )
         return ReconciliationReport(
-            matches=pd.DataFrame(match_rows),
-            requirements=pd.DataFrame(
-                self._requirement_segmentation_row(requirement)
-                for requirement in requirements
-            ),
-            inventory=pd.DataFrame(
-                self._inventory_segmentation_row(record)
-                for record in inventory
+            matches=matches,
+            requirements=requirement_segmentation,
+            inventory=inventory_segmentation,
+            user_report=self._build_user_report(
+                requirements_dataset.dataframe,
+                matches,
             ),
         )
 
@@ -239,15 +246,14 @@ class ReconciliationService:
             mappings,
             "requirements_quantity",
         )
-        udc_column = self._required_mapping(mappings, "requirements_udc")
-        date_column = self._required_mapping(mappings, "requirements_date")
-        secondary_column = mappings.get("requirements_item_description")
-        if (
-            not secondary_column
-            and MaterialParser.item_column in dataframe.columns
-            and MaterialParser.item_column != description_column
-        ):
-            secondary_column = MaterialParser.item_column
+        secondary_column = (
+            MaterialParser.item_column
+            if (
+                MaterialParser.item_column in dataframe.columns
+                and MaterialParser.item_column != description_column
+            )
+            else ""
+        )
 
         records = []
         for offset, (_, row) in enumerate(dataframe.iterrows()):
@@ -261,8 +267,6 @@ class ReconciliationService:
             records.append(
                 {
                     "source_row": source_row,
-                    "udc": self._text(row[udc_column]),
-                    "date": self._text(row[date_column]),
                     "description": primary,
                     "secondary_description": secondary,
                     "quantity": self._quantity(
@@ -286,8 +290,6 @@ class ReconciliationService:
         requested = requirement["quantity"]
         base = {
             "fila_requerimiento": requirement["source_row"],
-            "udc": requirement["udc"],
-            "fecha_programa": requirement["date"],
             "descripcion_requerida": requirement["description"],
             "familia": parsed.family.value,
             "cantidad_requerida": requested,
@@ -585,8 +587,6 @@ class ReconciliationService:
         parsed: ParsedMaterial = requirement["parsed"]
         return {
             "fila_origen": requirement["source_row"],
-            "udc": requirement["udc"],
-            "fecha_programa": requirement["date"],
             "descripcion": requirement["description"],
             "descripcion_respaldo": requirement["secondary_description"],
             "cantidad_requerida": requirement["quantity"],
@@ -600,6 +600,31 @@ class ReconciliationService:
             "confidence_score": parsed.confidence_score,
             "warnings": ", ".join(parsed.warnings),
         }
+
+    @staticmethod
+    def _build_user_report(
+        requirements_dataframe: pd.DataFrame,
+        matches: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Return the end-user Excel table based on the original requirements."""
+        report = requirements_dataframe.copy().reset_index(drop=True)
+        if matches.empty:
+            report["estado_asignacion"] = ""
+            report["codigo(s) asignado(s)"] = ""
+            report["descripcion(es) asignada(s)"] = ""
+            report["cantidad(es) asignada(s)"] = ""
+            report["cantidad_total_asignada"] = 0.0
+            report["cantidad_faltante"] = 0.0
+            return report
+
+        aligned = matches.reset_index(drop=True)
+        report["estado_asignacion"] = aligned["estado"]
+        report["codigo(s) asignado(s)"] = aligned["codigos_inventario"]
+        report["descripcion(es) asignada(s)"] = aligned["descripcion_inventario"]
+        report["cantidad(es) asignada(s)"] = aligned["asignaciones_inventario"]
+        report["cantidad_total_asignada"] = aligned["cantidad_asignada"]
+        report["cantidad_faltante"] = aligned["cantidad_faltante"]
+        return report
 
     @staticmethod
     def _inventory_segmentation_row(

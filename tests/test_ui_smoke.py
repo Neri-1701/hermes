@@ -6,6 +6,7 @@ from hermes.application import create_application
 from hermes.config import APP_TITLE
 from hermes.domain.models import DataSource
 from hermes.domain.reconciliation import ReconciliationStatus
+from hermes.services.column_mapping import ColumnMappingPreferences
 from hermes.ui.main_window import MainWindow
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
@@ -79,6 +80,31 @@ def test_main_window_loads_spreadsheet(tmp_path: Path) -> None:
     window.close()
 
 
+def test_main_window_auto_selects_likely_columns(tmp_path: Path) -> None:
+    path = tmp_path / "inventory.xlsx"
+    pd.DataFrame(
+        {
+            "Codigo Material": ["A-1"],
+            "Descripcion larga material": ["Stud"],
+            "Cantidad disponible": [5],
+        }
+    ).to_excel(path, index=False)
+    create_application(["hermes-test"])
+    window = MainWindow(
+        mapping_preferences=ColumnMappingPreferences(tmp_path / "prefs.json")
+    )
+
+    window.load_dataset(path, DataSource.INVENTORY)
+
+    assert window._state.mappings["inventory_code"] == "Codigo Material"
+    assert window._state.mappings["inventory_description"] == (
+        "Descripcion larga material"
+    )
+    assert window._state.mappings["inventory_quantity"] == "Cantidad disponible"
+
+    window.close()
+
+
 def test_main_window_switches_between_loaded_previews(tmp_path: Path) -> None:
     inventory_path = tmp_path / "inventory.xlsx"
     requirements_path = tmp_path / "requirements.xlsx"
@@ -118,32 +144,6 @@ def test_main_window_switches_between_loaded_previews(tmp_path: Path) -> None:
         == "inventory_code"
     )
     assert "inventario" in window.status_label.text()
-
-    window.close()
-
-
-def test_optional_backup_mapping_can_be_cleared(tmp_path: Path) -> None:
-    requirements_path = tmp_path / "requirements.xlsx"
-    pd.DataFrame(
-        {
-            "material": ["Material"],
-            "partida": ["Partida"],
-        }
-    ).to_excel(requirements_path, index=False)
-    create_application(["hermes-test"])
-    window = MainWindow()
-    window.load_dataset(requirements_path, DataSource.REQUIREMENTS)
-    combo = window._panels[DataSource.REQUIREMENTS]._combos[
-        "requirements_item_description"
-    ]
-
-    combo.setCurrentIndex(combo.findData("partida"))
-
-    assert window._state.mappings["requirements_item_description"] == "partida"
-
-    combo.setCurrentIndex(combo.findData(""))
-
-    assert "requirements_item_description" not in window._state.mappings
 
     window.close()
 
@@ -231,8 +231,6 @@ def test_main_window_exports_segmentation_report(
         "inventory_description": "description",
         "inventory_code": "code",
         "inventory_quantity": "available",
-        "requirements_udc": "udc",
-        "requirements_date": "date",
         "requirements_description": "description",
         "requirements_quantity": "required",
     }
@@ -245,18 +243,10 @@ def test_main_window_exports_segmentation_report(
     assert window.export_reconciliation_report()
 
     sheets = pd.read_excel(report_path, sheet_name=None)
-    assert set(sheets) == {
-        "Resumen",
-        "Cruce",
-        "Req segmentados",
-        "Inv segmentado",
-    }
-    assert sheets["Resumen"].loc[0, "Valor"] == (
-        "Segmentacion y cruce de materiales"
-    )
-    assert sheets["Cruce"].loc[0, "codigos_inventario"] == "E-1"
-    assert sheets["Req segmentados"].loc[0, "udc"] == "U-1"
-    assert sheets["Inv segmentado"].loc[0, "codigo"] == "E-1"
+    assert set(sheets) == {"Requerimientos"}
+    assert sheets["Requerimientos"].loc[0, "udc"] == "U-1"
+    assert sheets["Requerimientos"].loc[0, "codigo(s) asignado(s)"] == "E-1"
+    assert sheets["Requerimientos"].loc[0, "cantidad_total_asignada"] == 2
 
     window.close()
 
@@ -300,8 +290,6 @@ def test_main_window_segments_and_searches_inventory(
         "inventory_description": "description",
         "inventory_code": "code",
         "inventory_quantity": "available",
-        "requirements_udc": "udc",
-        "requirements_date": "date",
         "requirements_description": "description",
         "requirements_quantity": "required",
     }
@@ -315,7 +303,7 @@ def test_main_window_segments_and_searches_inventory(
     assert report.matches.iloc[0]["estado"] == (
         ReconciliationStatus.COVERED.value
     )
-    assert window.preview_source_combo.count() == 5
+    assert window.preview_source_combo.count() == 6
     assert window.preview_source_combo.currentData() == window.MATCH_RESULTS
     assert window.preview_model.rowCount() == 1
     assert "Cruce de inventario" in window.status_label.text()
