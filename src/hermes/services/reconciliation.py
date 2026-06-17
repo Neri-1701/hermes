@@ -48,6 +48,10 @@ class _Candidate:
     record: _InventoryRecord
     score: float
     exact: bool
+    match_type: str
+    acceptance_criteria: str
+    decision_reason: str
+    compatibility_level: str
 
 
 class ReconciliationService:
@@ -142,8 +146,11 @@ class ReconciliationService:
             results.append(
                 {
                     "tipo_coincidencia": (
-                        "EXACTA" if candidate.exact else "PARCIAL"
+                        candidate.match_type
                     ),
+                    "criterio_aceptacion": candidate.acceptance_criteria,
+                    "motivo_decision": candidate.decision_reason,
+                    "nivel_compatibilidad": candidate.compatibility_level,
                     "score_coincidencia": round(candidate.score, 2),
                     "fila_inventario": record.source_row,
                     "codigo": record.code,
@@ -228,6 +235,9 @@ class ReconciliationService:
                 "cantidad_disponible",
                 "canonical_key_busqueda",
                 "canonical_key_inventario",
+                "criterio_aceptacion",
+                "motivo_decision",
+                "nivel_compatibilidad",
                 "warnings_busqueda",
                 "warnings_inventario",
             ]
@@ -298,6 +308,9 @@ class ReconciliationService:
             "cobertura_pct": 0.0,
             "estado": ReconciliationStatus.NO_MATCH.value,
             "tipo_coincidencia": "NINGUNA",
+            "criterio_aceptacion": "",
+            "motivo_decision": "",
+            "nivel_compatibilidad": "NO_MATCH",
             "score_coincidencia": 0.0,
             "codigos_inventario": "",
             "filas_inventario": "",
@@ -356,8 +369,15 @@ class ReconciliationService:
                     "cantidad_asignada": assigned,
                     "cantidad_faltante": remaining_requirement,
                     "cobertura_pct": round(assigned / requested * 100, 2),
-                    "tipo_coincidencia": "EXACTA",
-                    "score_coincidencia": 1.0,
+                    "tipo_coincidencia": exact_candidates[0].match_type,
+                    "score_coincidencia": round(exact_candidates[0].score, 2),
+                    "criterio_aceptacion": (
+                        exact_candidates[0].acceptance_criteria
+                    ),
+                    "motivo_decision": exact_candidates[0].decision_reason,
+                    "nivel_compatibilidad": (
+                        exact_candidates[0].compatibility_level
+                    ),
                     "stock_localizado": available_stock,
                 }
             )
@@ -395,7 +415,10 @@ class ReconciliationService:
             base.update(
                 {
                     "estado": ReconciliationStatus.REVIEW_REQUIRED.value,
-                    "tipo_coincidencia": "PARCIAL",
+                    "tipo_coincidencia": best.match_type,
+                    "criterio_aceptacion": best.acceptance_criteria,
+                    "motivo_decision": best.decision_reason,
+                    "nivel_compatibilidad": best.compatibility_level,
                     "score_coincidencia": round(best.score, 2),
                     "stock_localizado": best.record.remaining,
                 }
@@ -415,33 +438,71 @@ class ReconciliationService:
         rules = self._rules_for(requirement)
         matched_weight = 0.0
         known_weight = 0.0
-        known_anchors = 0
+        compared_fields = 0
+        superior_fields: list[str] = []
+        skipped_optional_fields: list[str] = []
         for rule in rules:
             required_value = self._attribute(requirement, rule.name)
-            if required_value is None:
-                continue
-            known_weight += rule.weight
-            if rule.anchor:
-                known_anchors += 1
             inventory_value = self._attribute(inventory, rule.name)
-            if inventory_value is None:
-                continue
-            if not self._values_equal(required_value, inventory_value):
-                return None
-            matched_weight += rule.weight
 
-        if known_weight == 0 or known_anchors == 0:
+            if rule.anchor and (
+                required_value is None or inventory_value is None
+            ):
+                return None
+            if required_value is None or inventory_value is None:
+                if required_value is not None or inventory_value is not None:
+                    skipped_optional_fields.append(rule.name)
+                continue
+
+            comparison = self._compare_values(
+                rule.name,
+                required_value,
+                inventory_value,
+            )
+            if not comparison:
+                return None
+            known_weight += rule.weight
+            matched_weight += rule.weight
+            compared_fields += 1
+            if comparison == "SUPERIOR":
+                superior_fields.append(rule.name)
+
+        if known_weight == 0 or compared_fields == 0:
             return None
         score = matched_weight / known_weight
         if score < 0.55:
             return None
 
-        exact = (
-            score == 1.0
-            and self._eligible_for_automatic_match(requirement)
-            and self._eligible_for_automatic_match(inventory)
+        blocking_warnings = (
+            self._blocking_warnings(requirement)
+            | self._blocking_warnings(inventory)
         )
-        return _Candidate(record=record, score=score, exact=exact)
+        exact = score == 1.0 and not blocking_warnings
+        match_type = self._match_type(
+            requirement,
+            inventory,
+            exact=exact,
+            superior_fields=superior_fields,
+            skipped_optional_fields=skipped_optional_fields,
+        )
+        return _Candidate(
+            record=record,
+            score=score,
+            exact=exact,
+            match_type=match_type,
+            acceptance_criteria=self._acceptance_criteria(
+                requirement.family,
+                superior_fields,
+                skipped_optional_fields,
+            ),
+            decision_reason=self._decision_reason(
+                blocking_warnings,
+                superior_fields,
+                skipped_optional_fields,
+                exact,
+            ),
+            compatibility_level=match_type,
+        )
 
     @staticmethod
     def _rules_for(parsed: ParsedMaterial) -> tuple[_FieldRule, ...]:
@@ -534,6 +595,97 @@ class ReconciliationService:
         return parsed.attributes.get(name)
 
     @staticmethod
+    def _compare_values(name: str, required: Any, inventory: Any) -> str | None:
+        if name == "espesor_pared":
+            try:
+                required_float = float(required)
+                inventory_float = float(inventory)
+            except (TypeError, ValueError):
+                return None
+            if inventory_float + 0.005 < required_float:
+                return None
+            if inventory_float > required_float + 0.005:
+                return "SUPERIOR"
+            return "MATCH"
+        if ReconciliationService._values_equal(required, inventory):
+            return "MATCH"
+        return None
+
+    @staticmethod
+    def _blocking_warnings(parsed: ParsedMaterial) -> set[str]:
+        blocking = {
+            "parse_error",
+            "activity_description",
+            "accessory_list",
+            "schedule_thickness_conflict",
+            "multiple_diameter_candidates",
+        }
+        return {warning for warning in parsed.warnings if warning in blocking}
+
+    @staticmethod
+    def _match_type(
+        requirement: ParsedMaterial,
+        inventory: ParsedMaterial,
+        exact: bool,
+        superior_fields: list[str],
+        skipped_optional_fields: list[str],
+    ) -> str:
+        if not exact:
+            return "VALIDACION_TECNICA"
+        if superior_fields:
+            return "ACEPTABLE_SUPERIOR"
+        if skipped_optional_fields:
+            return "ACEPTABLE_DIMENSIONALMENTE"
+        if requirement.canonical_key and (
+            requirement.canonical_key == inventory.canonical_key
+        ):
+            return "EXACTA"
+        return "ACEPTABLE_DIMENSIONALMENTE"
+
+    @staticmethod
+    def _acceptance_criteria(
+        family: MaterialFamily,
+        superior_fields: list[str],
+        skipped_optional_fields: list[str],
+    ) -> str:
+        if superior_fields:
+            return "dimensiones_criticas_con_condicion_superior"
+        if family is MaterialFamily.STUDS:
+            return "diametro_y_longitud"
+        if family is MaterialFamily.GASKETS:
+            return "tipo_diametro_clase"
+        if family is MaterialFamily.PIPE:
+            return "diametro_y_espesor_pared"
+        if family is MaterialFamily.FLANGES:
+            return "tipo_diametro_clase"
+        if family is MaterialFamily.ELBOWS:
+            return "angulo_diametro_y_condicion_presion"
+        return "atributos_comparables"
+
+    @staticmethod
+    def _decision_reason(
+        blocking_warnings: set[str],
+        superior_fields: list[str],
+        skipped_optional_fields: list[str],
+        exact: bool,
+    ) -> str:
+        if blocking_warnings:
+            return "warnings_bloqueantes: " + ", ".join(
+                sorted(blocking_warnings)
+            )
+        if superior_fields:
+            return "inventario_igual_o_superior_en: " + ", ".join(
+                superior_fields
+            )
+        if skipped_optional_fields:
+            return "campos_opcionales_no_declarados: " + ", ".join(
+                skipped_optional_fields
+            )
+        if exact:
+            return "campos_criticos_compatibles_sin_conflictos"
+        return "requiere_validacion_tecnica"
+
+    @staticmethod
     def _values_equal(left: Any, right: Any) -> bool:
         if isinstance(left, float) or isinstance(right, float):
             try:
@@ -541,13 +693,6 @@ class ReconciliationService:
             except (TypeError, ValueError):
                 return False
         return left == right
-
-    @staticmethod
-    def _eligible_for_automatic_match(parsed: ParsedMaterial) -> bool:
-        allowed_warnings = {"used_secondary_description"}
-        return all(
-            warning in allowed_warnings for warning in parsed.warnings
-        )
 
     @staticmethod
     def _add_inventory_display(
@@ -611,6 +756,10 @@ class ReconciliationService:
         report = requirements_dataframe.copy().reset_index(drop=True)
         if matches.empty:
             report["estado_asignacion"] = ""
+            report["tipo_coincidencia"] = ""
+            report["criterio_aceptacion"] = ""
+            report["motivo_decision"] = ""
+            report["nivel_compatibilidad"] = ""
             report["codigo(s) asignado(s)"] = ""
             report["descripcion(es) asignada(s)"] = ""
             report["cantidad(es) asignada(s)"] = ""
@@ -620,6 +769,10 @@ class ReconciliationService:
 
         aligned = matches.reset_index(drop=True)
         report["estado_asignacion"] = aligned["estado"]
+        report["tipo_coincidencia"] = aligned["tipo_coincidencia"]
+        report["criterio_aceptacion"] = aligned["criterio_aceptacion"]
+        report["motivo_decision"] = aligned["motivo_decision"]
+        report["nivel_compatibilidad"] = aligned["nivel_compatibilidad"]
         report["codigo(s) asignado(s)"] = aligned["codigos_inventario"]
         report["descripcion(es) asignada(s)"] = aligned["descripcion_inventario"]
         report["cantidad(es) asignada(s)"] = aligned["asignaciones_inventario"]

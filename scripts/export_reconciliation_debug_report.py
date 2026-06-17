@@ -1,6 +1,9 @@
 """Export detailed reconciliation tables for developer validation.
 
 Usage:
+    .venv/bin/python scripts/export_reconciliation_debug_report.py
+
+    # Or override any input explicitly:
     .venv/bin/python scripts/export_reconciliation_debug_report.py \
         inventory.xlsx requirements.xlsx --output debug_reconciliacion.xlsx \
         --inventory-description description --inventory-code code \
@@ -23,6 +26,16 @@ if str(SRC) not in sys.path:
 
 from hermes.domain.models import DataSource, HermesState, LoadedDataset  # noqa: E402
 from hermes.services.reconciliation import ReconciliationService  # noqa: E402
+
+DEFAULT_FIXTURES_DIR = ROOT / "data" / "fixtures"
+DEFAULT_OUTPUT = ROOT / "data" / "outputs" / "debug_reconciliacion_hermes.xlsx"
+DEFAULT_INVENTORY_PATTERN = "INVENTARIOS*.xlsx"
+DEFAULT_REQUIREMENTS_PATTERN = "CONTROL*.xlsx"
+DEFAULT_INVENTORY_DESCRIPTION = "Descripcion Larga"
+DEFAULT_INVENTORY_CODE = "CODIGO"
+DEFAULT_INVENTORY_QUANTITY = "CANT"
+DEFAULT_REQUIREMENTS_DESCRIPTION = "DESCRIPCION DEL MATERIAL"
+DEFAULT_REQUIREMENTS_QUANTITY = "CANTIDAD TOTAL"
 
 
 def _require_columns(dataframe: pd.DataFrame, columns: tuple[str, ...]) -> None:
@@ -93,28 +106,76 @@ def export_debug_report(
         )
 
 
+def _default_fixture(pattern: str, label: str) -> Path:
+    matches = sorted(DEFAULT_FIXTURES_DIR.glob(pattern))
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise FileNotFoundError(
+            f"No {label} file found in {DEFAULT_FIXTURES_DIR} "
+            f"matching {pattern!r}."
+        )
+    options = ", ".join(path.name for path in matches)
+    raise ValueError(
+        f"Multiple {label} files found in {DEFAULT_FIXTURES_DIR}: {options}. "
+        "Pass the desired path explicitly."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Export detailed Hermes reconciliation tables.",
     )
-    parser.add_argument("inventory", type=Path, help="Inventory .xlsx path.")
+    parser.add_argument(
+        "inventory",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="Inventory .xlsx path.",
+    )
     parser.add_argument(
         "requirements",
+        nargs="?",
         type=Path,
+        default=None,
         help="Requirements .xlsx path.",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("debug_reconciliacion_hermes.xlsx"),
+        default=DEFAULT_OUTPUT,
         help="Output .xlsx path.",
     )
-    parser.add_argument("--inventory-description", required=True)
-    parser.add_argument("--inventory-code", required=True)
-    parser.add_argument("--inventory-quantity", required=True)
-    parser.add_argument("--requirements-description", required=True)
-    parser.add_argument("--requirements-quantity", required=True)
-    return parser.parse_args()
+    parser.add_argument(
+        "--inventory-description",
+        default=DEFAULT_INVENTORY_DESCRIPTION,
+    )
+    parser.add_argument("--inventory-code", default=DEFAULT_INVENTORY_CODE)
+    parser.add_argument(
+        "--inventory-quantity",
+        default=DEFAULT_INVENTORY_QUANTITY,
+    )
+    parser.add_argument(
+        "--requirements-description",
+        default=DEFAULT_REQUIREMENTS_DESCRIPTION,
+    )
+    parser.add_argument(
+        "--requirements-quantity",
+        default=DEFAULT_REQUIREMENTS_QUANTITY,
+    )
+    args = parser.parse_args()
+    if (args.inventory is None) != (args.requirements is None):
+        parser.error("Pass both inventory and requirements paths, or neither.")
+    if args.inventory is None:
+        args.inventory = _default_fixture(
+            DEFAULT_INVENTORY_PATTERN,
+            "inventory",
+        )
+        args.requirements = _default_fixture(
+            DEFAULT_REQUIREMENTS_PATTERN,
+            "requirements",
+        )
+    return args
 
 
 def main() -> int:

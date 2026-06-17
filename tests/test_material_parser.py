@@ -305,6 +305,21 @@ def test_extracts_butt_weld_elbow_using_schedule() -> None:
     assert "norma=ASME B16.9" in parsed.canonical_key
 
 
+def test_elbow_explicit_thickness_is_enough_for_wall_thickness() -> None:
+    parsed = MaterialParser().parse_description(
+        'CODO, DE ACERO AL CARBONO, SIN RECUBRIMIENTO, DE 4.00" '
+        'DE DIAMETRO NOMINAL, 0.337" DE ESPESOR, CEDULA: (080) (-XS), '
+        "SIN COSTURA, TIPO: 90 GRADOS, RADIO LARGO, EXTREMOS: BISELADOS, "
+        "ESPECIFICACION: ASTM A234, GRADO: WPB, ASME: B16.9."
+    )
+
+    assert parsed.family is MaterialFamily.ELBOWS
+    assert parsed.attributes["espesor"] == 0.337
+    assert parsed.attributes["espesor_pared_in"] == 0.337
+    assert parsed.attributes["fuente_espesor"] == "EXPLICITO"
+    assert "missing_clase_o_cedula" not in parsed.warnings
+
+
 def test_rejects_generic_accessory_list_as_elbow() -> None:
     parsed = MaterialParser().parse_description(
         "CODO, BRIDA, NIPLE, COPLE Y OTROS ACCESORIOS PARA MONTAJE"

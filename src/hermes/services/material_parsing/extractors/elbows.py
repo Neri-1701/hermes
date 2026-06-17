@@ -120,7 +120,11 @@ class ElbowExtractor:
                 type_value += f" RADIO {radius.value}"
             attributes["tipo_codo"] = type_value
 
-        has_pressure_basis = pressure_class is not None or schedule is not None
+        has_pressure_basis = (
+            pressure_class is not None
+            or schedule is not None
+            or thickness is not None
+        )
         required = ("angulo", "diametro", "material_base", "clase_o_cedula")
         missing_fields = tuple(
             field
@@ -141,7 +145,7 @@ class ElbowExtractor:
         is_butt_weld = schedule is not None or any(
             item.value == "ASME B16.9" for item in standards
         ) or (ends is not None and ends.value == "BW")
-        if is_butt_weld:
+        if is_butt_weld or thickness is not None:
             add_resolved_thickness(attributes, warnings)
         thickness_key = (
             format_decimal_inches(attributes["espesor_pared_in"])

@@ -172,7 +172,7 @@ def test_quick_search_returns_partial_matches_for_incomplete_query() -> None:
     )
 
     assert results["codigo"].tolist() == ["E-1"]
-    assert results.iloc[0]["tipo_coincidencia"] == "PARCIAL"
+    assert results.iloc[0]["tipo_coincidencia"] == "ACEPTABLE_DIMENSIONALMENTE"
     assert results.iloc[0]["score_coincidencia"] == 1
     assert "missing_grado" in results.iloc[0]["warnings_busqueda"]
 
@@ -304,7 +304,339 @@ def test_does_not_match_std_and_schedule_40_globally() -> None:
     assert report.matches.iloc[0]["codigos_inventario"] == ""
 
 
-def test_partial_technical_match_is_suggested_but_not_allocated() -> None:
+def test_matches_inventory_with_equal_or_greater_wall_thickness() -> None:
+    requirement = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    inventory = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, ESPESOR DE 0.375", '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["T-8-XS"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.COVERED.value
+    assert report.matches.iloc[0]["tipo_coincidencia"] == "ACEPTABLE_SUPERIOR"
+    assert report.matches.iloc[0]["codigos_inventario"] == "T-8-XS"
+
+
+def test_rejects_inventory_with_lower_wall_thickness() -> None:
+    requirement = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    inventory = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, ESPESOR DE 0.250", '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["T-8-LIGHT"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
+
+
+def test_gasket_missing_norm_is_operationally_acceptable() -> None:
+    requirement = (
+        'EMPAQUE, DE 3" DE DIAMETRO NOMINAL, CLASE 150, '
+        "TIPO ESPIROMETALICO, CARA REALZADA (-RF), ASME B16.20"
+    )
+    inventory = (
+        'EMPAQUE, DE 3" DE DIAMETRO NOMINAL, CLASE 150, '
+        "TIPO ESPIROMETALICO, CARA REALZADA (-RF)"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["G-3"],
+                "available": [4],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.COVERED.value
+    assert report.matches.iloc[0]["tipo_coincidencia"] == (
+        "ACEPTABLE_DIMENSIONALMENTE"
+    )
+
+
+def test_flange_rejects_different_class() -> None:
+    requirement = FLANGE
+    inventory = FLANGE.replace("CLASE 150", "CLASE 300")
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["B-300"],
+                "available": [1],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
+
+
+def test_flange_rejects_different_face() -> None:
+    requirement = FLANGE
+    inventory = FLANGE.replace("CARA REALZADA (-RF)", "JUNTA DE ANILLO (-RTJ)")
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["B-RTJ"],
+                "available": [1],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
+
+
+def test_additional_nace_standard_does_not_penalize_match() -> None:
+    inventory = (
+        PIPE
+        + ", ANSI/NACE MR0175/ISO 15156-2"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["T-NACE"],
+                "available": [1],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [PIPE],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.COVERED.value
+    assert report.matches.iloc[0]["score_coincidencia"] == 1
+
+
+def test_butt_weld_elbow_does_not_cross_socket_weld_elbow() -> None:
+    requirement = (
+        'CODO, 90 GRADOS, DE 2" DE DIAMETRO NOMINAL, CEDULA 80, '
+        "EXTREMOS BISELADOS, DE ACERO AL CARBONO, ASME B16.9"
+    )
+    inventory = (
+        'CODO, 90 GRADOS, DE 2" DE DIAMETRO NOMINAL, CLASE 3000, '
+        "EXTREMOS INSERTO SOLDABLE, DE ACERO AL CARBONO, ASME B16.11"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["C-SW"],
+                "available": [1],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
+
+
+def test_elbow_uses_wall_thickness_over_schedule_notation() -> None:
+    requirement = (
+        "CODO DE 90 GRADOS, R.L., ACERO AL CARBONO S/COSTURA, "
+        "EXTREMOS BISELADOS PARA SOLDAR, ESPECIFICACION ASTM-A-234, "
+        'GRADO WPB, DE CEDULA 80 DE 4" Ø. ASME/ANSI B16.9'
+    )
+    inventory = (
+        'CODO, DE ACERO AL CARBONO, SIN RECUBRIMIENTO, DE 4.00" '
+        'DE DIAMETRO NOMINAL, 0.337" DE ESPESOR, CEDULA: (080) (-XS), '
+        "SIN COSTURA, TIPO: 90 GRADOS, RADIO LARGO, EXTREMOS: BISELADOS, "
+        "ESPECIFICACION: ASTM A234, GRADO: WPB, ASME: B16.9."
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["C-4-80"],
+                "available": [1],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.COVERED.value
+    assert report.matches.iloc[0]["tipo_coincidencia"] == (
+        "ACEPTABLE_DIMENSIONALMENTE"
+    )
+    assert report.matches.iloc[0]["codigos_inventario"] == "C-4-80"
+
+
+def test_missing_optional_attribute_does_not_penalize_score() -> None:
+    requirement = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    inventory = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, ESPESOR DE 0.322", '
+        "DE ACERO AL CARBONO"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["T-8"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.COVERED.value
+    assert report.matches.iloc[0]["score_coincidencia"] == 1
+    assert report.matches.iloc[0]["codigos_inventario"] == "T-8"
+
+
+def test_conflicting_optional_attribute_rejects_candidate() -> None:
+    requirement = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO, ASTM A106/A106M GRADO B"
+    )
+    inventory = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, ESPESOR DE 0.322", '
+        "DE ACERO AL CARBONO, ASTM A53/A53M GRADO B"
+    )
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["T-8"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
+
+
+def test_missing_anchor_attribute_rejects_candidate() -> None:
+    requirement = (
+        'TUBO, DE 8" DE DIAMETRO NOMINAL, SCH 40, '
+        "DE ACERO AL CARBONO"
+    )
+    inventory = 'TUBO, DE 8" DE DIAMETRO NOMINAL, DE ACERO AL CARBONO'
+    state = _state(
+        pd.DataFrame(
+            {
+                "description": [inventory],
+                "code": ["T-8"],
+                "available": [2],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "description": [requirement],
+                "required": [1],
+            }
+        ),
+    )
+
+    report = ReconciliationService().reconcile(state)
+
+    assert report.matches.iloc[0]["estado"] == ReconciliationStatus.NO_MATCH.value
+    assert report.matches.iloc[0]["codigos_inventario"] == ""
+
+
+def test_missing_stud_grade_is_operationally_acceptable() -> None:
     state = _state(
         pd.DataFrame(
             {
@@ -326,12 +658,12 @@ def test_partial_technical_match_is_suggested_but_not_allocated() -> None:
     report = ReconciliationService().reconcile(state)
     match = report.matches.iloc[0]
 
-    assert match["estado"] == ReconciliationStatus.REVIEW_REQUIRED.value
-    assert match["tipo_coincidencia"] == "PARCIAL"
+    assert match["estado"] == ReconciliationStatus.COVERED.value
+    assert match["tipo_coincidencia"] == "ACEPTABLE_DIMENSIONALMENTE"
     assert match["score_coincidencia"] == 1
-    assert match["cantidad_asignada"] == 0
+    assert match["cantidad_asignada"] == 2
     assert match["codigos_inventario"] == "E-1"
-    assert report.inventory.iloc[0]["cantidad_restante"] == 10
+    assert report.inventory.iloc[0]["cantidad_restante"] == 8
 
 
 def test_conflicting_technical_attributes_are_not_suggested() -> None:
@@ -389,7 +721,7 @@ def test_parser_conflict_prevents_automatic_inventory_assignment() -> None:
     match = report.matches.iloc[0]
 
     assert match["estado"] == ReconciliationStatus.REVIEW_REQUIRED.value
-    assert match["tipo_coincidencia"] == "PARCIAL"
+    assert match["tipo_coincidencia"] == "VALIDACION_TECNICA"
     assert match["cantidad_asignada"] == 0
 
 
