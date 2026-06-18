@@ -91,6 +91,7 @@ mapeos ambiguos.
 
 - Python 3.10 o superior
 - Un entorno grafico de escritorio
+- En Linux con Qt/X11: `libxcb-cursor0` instalado en el sistema
 
 ## Instalacion
 
@@ -98,6 +99,13 @@ mapeos ambiguos.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+```
+
+En Debian/Ubuntu, si la aplicacion falla al iniciar con un error del plugin
+Qt `xcb`, instala la dependencia del sistema:
+
+```bash
+sudo apt install libxcb-cursor0
 ```
 
 En Windows:
