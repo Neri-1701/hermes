@@ -26,11 +26,20 @@ class DataFrameTableModel(QAbstractTableModel):
         """Return the row count of the complete source dataframe."""
         return self._total_rows
 
-    def set_dataframe(self, dataframe: pd.DataFrame) -> None:
-        """Replace the source while retaining only the configured preview."""
+    def set_dataframe(
+        self,
+        dataframe: pd.DataFrame,
+        limit_rows: bool = True,
+    ) -> None:
+        """Replace the source, optionally retaining only preview rows."""
         self.beginResetModel()
         self._total_rows = len(dataframe)
-        self._dataframe = dataframe.head(self._preview_limit).copy()
+        visible = (
+            dataframe.head(self._preview_limit)
+            if limit_rows
+            else dataframe
+        )
+        self._dataframe = visible.copy()
         self.endResetModel()
 
     def clear(self) -> None:

@@ -5,6 +5,8 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
+import pandas as pd
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
@@ -12,14 +14,17 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTableView,
     QVBoxLayout,
     QWidget,
 )
 
+from hermes import __version__
 from hermes.config import (
     APP_TITLE,
     MAPPING_FIELDS,
@@ -30,7 +35,12 @@ from hermes.config import (
     WINDOW_WIDTH,
 )
 from hermes.domain.models import DataSource, HermesState
+from hermes.services.column_mapping import ColumnMappingPreferences
 from hermes.services.excel_reader import DataLoadError, ExcelReader
+from hermes.services.reconciliation import (
+    ReconciliationError,
+    ReconciliationService,
+)
 from hermes.services.setup_validator import SetupValidator
 from hermes.ui.dataframe_model import DataFrameTableModel
 from hermes.ui.source_panel import SourcePanel
@@ -39,18 +49,32 @@ from hermes.ui.source_panel import SourcePanel
 class MainWindow(QMainWindow):
     """Coordinate spreadsheet loading, mapping, preview, and validation."""
 
+    MATCH_RESULTS = "result:matches"
+    USER_REPORT = "result:user_report"
+    REQUIREMENT_SEGMENTATION = "result:requirements"
+    INVENTORY_SEGMENTATION = "result:inventory"
+    QUICK_SEARCH_RESULTS = "result:search"
+
     def __init__(
         self,
         excel_reader: ExcelReader | None = None,
         validator: SetupValidator | None = None,
+        reconciler: ReconciliationService | None = None,
+        mapping_preferences: ColumnMappingPreferences | None = None,
         parent=None,
     ) -> None:
         """Create the window with optional service dependencies for testing."""
         super().__init__(parent)
         self._reader = excel_reader or ExcelReader()
         self._validator = validator or SetupValidator()
+        self._reconciler = reconciler or ReconciliationService()
+        self._mapping_preferences = (
+            mapping_preferences or ColumnMappingPreferences()
+        )
         self._state = HermesState()
         self._panels: dict[DataSource, SourcePanel] = {}
+        self._search_results = None
+        self._configuration_splitter_sizes = [260, 420]
         self._dark_mode = False
 
         self.setWindowTitle(APP_TITLE)
@@ -75,32 +99,42 @@ class MainWindow(QMainWindow):
         central = QWidget()
         central.setObjectName("centralWidget")
         root = QVBoxLayout(central)
-        root.setContentsMargins(28, 24, 28, 28)
-        root.setSpacing(18)
+        root.setContentsMargins(24, 18, 24, 20)
+        root.setSpacing(12)
         self.setCentralWidget(central)
 
         header = QFrame()
         header.setObjectName("header")
         header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(22, 18, 22, 18)
-        header_layout.setSpacing(4)
+        header_layout.setContentsMargins(18, 12, 18, 12)
+        header_layout.setSpacing(3)
 
         eyebrow = QLabel("GESTION DE MATERIALES")
         eyebrow.setObjectName("eyebrow")
         header_layout.addWidget(eyebrow)
 
-        title = QLabel("Preparacion de datos")
+        title = QLabel("HERMES: Segmentacion y cruce de materiales")
         title.setObjectName("title")
         header_layout.addWidget(title)
 
         subtitle = QLabel(
-            "Carga los archivos, relaciona sus columnas y revisa la configuracion "
-            "antes de procesar."
+            "Carga los archivos, relaciona sus columnas y ejecuta la segmentacion "
+            "para localizar inventario compatible."
         )
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
         header_layout.addWidget(subtitle)
         root.addWidget(header)
+
+        self.workspace_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.workspace_splitter.setObjectName("workspaceSplitter")
+        self.workspace_splitter.setChildrenCollapsible(False)
+
+        self.configuration_panel = QFrame()
+        self.configuration_panel.setObjectName("configurationPanel")
+        configuration_layout = QVBoxLayout(self.configuration_panel)
+        configuration_layout.setContentsMargins(0, 0, 0, 0)
+        configuration_layout.setSpacing(12)
 
         panels_layout = QHBoxLayout()
         panels_layout.setSpacing(16)
@@ -108,10 +142,36 @@ class MainWindow(QMainWindow):
             fields = [field for field in MAPPING_FIELDS if field.source == source]
             panel = SourcePanel(source, fields)
             panel.load_requested.connect(partial(self._select_dataset, source))
-            panel.mapping_changed.connect(self._state.set_mapping)
+            panel.mapping_changed.connect(self._set_mapping)
             self._panels[source] = panel
-            panels_layout.addWidget(panel)
-        root.addLayout(panels_layout)
+            panels_layout.addWidget(panel, stretch=1)
+        configuration_layout.addLayout(panels_layout, stretch=1)
+
+        search_card = QFrame()
+        search_card.setObjectName("quickSearchCard")
+        search_layout = QHBoxLayout(search_card)
+        search_layout.setContentsMargins(16, 12, 16, 12)
+        search_layout.setSpacing(10)
+
+        search_label = QLabel("Busqueda rapida:")
+        search_label.setObjectName("quickSearchLabel")
+        search_layout.addWidget(search_label)
+
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("quickSearchInput")
+        self.search_input.setPlaceholderText(
+            'Ejemplo: TUBO DE 2" CEDULA 80 DE ACERO AL CARBONO'
+        )
+        self.search_input.returnPressed.connect(self.run_quick_search)
+        search_layout.addWidget(self.search_input, stretch=1)
+
+        self.search_button = QPushButton("Buscar en inventario")
+        self.search_button.setObjectName("secondaryButton")
+        self.search_button.clicked.connect(self.run_quick_search)
+        search_layout.addWidget(self.search_button)
+
+        configuration_layout.addWidget(search_card)
+        self.workspace_splitter.addWidget(self.configuration_panel)
 
         preview_card = QFrame()
         preview_card.setObjectName("previewCard")
@@ -121,25 +181,40 @@ class MainWindow(QMainWindow):
 
         preview_header = QFrame()
         preview_header.setObjectName("previewHeader")
-        preview_header_layout = QHBoxLayout(preview_header)
+        preview_header_layout = QVBoxLayout(preview_header)
         preview_header_layout.setContentsMargins(18, 14, 18, 14)
-        preview_header_layout.setSpacing(10)
+        preview_header_layout.setSpacing(8)
+
+        preview_title_row = QHBoxLayout()
+        preview_title_row.setSpacing(10)
 
         preview_copy = QVBoxLayout()
         preview_copy.setSpacing(2)
-        preview_title = QLabel("Vista previa")
+        preview_title = QLabel("Datos y resultados")
         preview_title.setObjectName("sectionTitle")
         preview_copy.addWidget(preview_title)
 
         self.status_label = QLabel("Sin datos cargados")
         self.status_label.setObjectName("status")
         preview_copy.addWidget(self.status_label)
-        preview_header_layout.addLayout(preview_copy)
-        preview_header_layout.addStretch()
+        preview_title_row.addLayout(preview_copy)
+        preview_title_row.addStretch()
 
-        preview_source_label = QLabel("Mostrar archivo:")
+        self.configuration_toggle_button = QPushButton("Ocultar config.")
+        self.configuration_toggle_button.setObjectName("secondaryButton")
+        self.configuration_toggle_button.clicked.connect(
+            self._toggle_configuration_panel
+        )
+        preview_title_row.addWidget(self.configuration_toggle_button)
+        preview_header_layout.addLayout(preview_title_row)
+
+        preview_controls_row = QHBoxLayout()
+        preview_controls_row.setSpacing(10)
+        preview_controls_row.addStretch()
+
+        preview_source_label = QLabel("Mostrar vista:")
         preview_source_label.setObjectName("previewSourceLabel")
-        preview_header_layout.addWidget(preview_source_label)
+        preview_controls_row.addWidget(preview_source_label)
 
         self.preview_source_combo = QComboBox()
         self.preview_source_combo.setObjectName("previewSource")
@@ -148,17 +223,31 @@ class MainWindow(QMainWindow):
         self.preview_source_combo.currentIndexChanged.connect(
             self._change_preview_source
         )
-        preview_header_layout.addWidget(self.preview_source_combo)
+        preview_controls_row.addWidget(self.preview_source_combo)
 
-        validate_button = QPushButton("Validar configuracion")
-        validate_button.setObjectName("primaryButton")
+        validate_button = QPushButton("Validar")
+        validate_button.setObjectName("secondaryButton")
         validate_button.clicked.connect(self.validate_setup)
-        preview_header_layout.addWidget(validate_button)
+        preview_controls_row.addWidget(validate_button)
 
-        clear_button = QPushButton("Limpiar vista previa")
+        self.process_button = QPushButton("Segmentar")
+        self.process_button.setObjectName("primaryButton")
+        self.process_button.clicked.connect(self.run_reconciliation)
+        preview_controls_row.addWidget(self.process_button)
+
+        self.export_report_button = QPushButton("Exportar reporte")
+        self.export_report_button.setObjectName("secondaryButton")
+        self.export_report_button.setEnabled(False)
+        self.export_report_button.clicked.connect(
+            self.export_reconciliation_report
+        )
+        preview_controls_row.addWidget(self.export_report_button)
+
+        clear_button = QPushButton("Limpiar")
         clear_button.setObjectName("secondaryButton")
         clear_button.clicked.connect(self.clear_preview)
-        preview_header_layout.addWidget(clear_button)
+        preview_controls_row.addWidget(clear_button)
+        preview_header_layout.addLayout(preview_controls_row)
         preview_layout.addWidget(preview_header)
 
         self.preview_model = DataFrameTableModel(PREVIEW_LIMIT, self)
@@ -172,7 +261,16 @@ class MainWindow(QMainWindow):
         self.preview_table.horizontalHeader().setDefaultSectionSize(180)
         self.preview_table.verticalHeader().setDefaultSectionSize(34)
         preview_layout.addWidget(self.preview_table, stretch=1)
-        root.addWidget(preview_card, stretch=1)
+        self.workspace_splitter.addWidget(preview_card)
+        self.workspace_splitter.setStretchFactor(0, 0)
+        self.workspace_splitter.setStretchFactor(1, 1)
+        self.workspace_splitter.setSizes([260, 420])
+        root.addWidget(self.workspace_splitter, stretch=1)
+
+        self.version_label = QLabel(f"Version {__version__} develop")
+        self.version_label.setObjectName("versionLabel")
+        self.version_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        root.addWidget(self.version_label)
 
     def _select_dataset(self, source: DataSource) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -198,12 +296,26 @@ class MainWindow(QMainWindow):
             return False
 
         self._state.set_dataset(dataset)
+        self._remove_result_views()
         panel = self._panels[source]
         panel.clear_mappings()
         panel.set_dataset(dataset.path, dataset.columns)
+        self._auto_select_mappings(source, dataset.columns)
         self._add_preview_source(source)
         self._select_preview_source(source)
         return True
+
+    def _auto_select_mappings(
+        self,
+        source: DataSource,
+        columns: tuple[str, ...],
+    ) -> None:
+        panel = self._panels[source]
+        fields = [field for field in MAPPING_FIELDS if field.source == source]
+        for field in fields:
+            suggestion = self._mapping_preferences.suggest(field, columns)
+            if suggestion:
+                panel.select_column(field.key, suggestion)
 
     def _add_preview_source(self, source: DataSource) -> None:
         if self.preview_source_combo.findData(source.value) < 0:
@@ -223,8 +335,10 @@ class MainWindow(QMainWindow):
 
     def _change_preview_source(self, index: int) -> None:
         source_value = self.preview_source_combo.itemData(index)
-        if source_value:
+        if source_value in {source.value for source in DataSource}:
             self._show_preview(DataSource(source_value))
+        elif source_value:
+            self._show_result(source_value)
 
     def _show_preview(self, source: DataSource) -> None:
         dataset = self._state.dataset_for(source)
@@ -257,10 +371,216 @@ class MainWindow(QMainWindow):
         )
         self.status_label.setText("Configuracion validada")
 
+    def run_reconciliation(self) -> bool:
+        """Segment both datasets, search inventory, and show the match table."""
+        validation = self._validator.validate(self._state)
+        if not validation.is_valid:
+            QMessageBox.warning(
+                self,
+                "Configuracion incompleta",
+                "\n".join(validation.errors),
+            )
+            self.status_label.setText("Configuracion incompleta")
+            return False
+
+        try:
+            report = self._reconciler.reconcile(self._state)
+        except ReconciliationError as exc:
+            QMessageBox.warning(self, "No fue posible procesar", str(exc))
+            self.status_label.setText("No fue posible procesar los archivos")
+            return False
+
+        self._state.set_reconciliation_report(report)
+        self.export_report_button.setEnabled(True)
+        self._add_result_views()
+        self._select_result_view(self.MATCH_RESULTS)
+        QMessageBox.information(
+            self,
+            "Cruce completado",
+            report.build_summary(),
+        )
+        return True
+
+    def run_quick_search(self) -> bool:
+        """Interpret a material query and display compatible inventory rows."""
+        query_text = self.search_input.text().strip()
+        try:
+            results = self._reconciler.search_inventory(
+                self._state,
+                query_text,
+            )
+        except ReconciliationError as exc:
+            QMessageBox.warning(self, "No fue posible buscar", str(exc))
+            self.status_label.setText("No fue posible buscar en inventario")
+            return False
+
+        self._search_results = results
+        if self.preview_source_combo.findData(self.QUICK_SEARCH_RESULTS) < 0:
+            self.preview_source_combo.addItem(
+                "Busqueda rapida",
+                self.QUICK_SEARCH_RESULTS,
+            )
+        self.preview_source_combo.setEnabled(True)
+        self._select_result_view(self.QUICK_SEARCH_RESULTS)
+        if results.empty:
+            QMessageBox.information(
+                self,
+                "Sin coincidencias",
+                "No se encontraron materiales compatibles con la busqueda.",
+            )
+        return True
+
+    def export_reconciliation_report(self) -> bool:
+        """Save the latest segmentation and reconciliation report to Excel."""
+        if self._state.reconciliation_report is None:
+            QMessageBox.warning(
+                self,
+                "Sin reporte",
+                "Ejecuta la segmentacion antes de exportar el reporte.",
+            )
+            return False
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar reporte de segmentacion",
+            "reporte_segmentacion_hermes.xlsx",
+            "Archivos Excel (*.xlsx)",
+        )
+        if not path:
+            return False
+
+        output_path = Path(path)
+        if output_path.suffix.lower() != ".xlsx":
+            output_path = output_path.with_suffix(".xlsx")
+
+        try:
+            self._write_reconciliation_report(output_path)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "No fue posible exportar",
+                f"No se pudo guardar el reporte:\n{exc}",
+            )
+            return False
+
+        QMessageBox.information(
+            self,
+            "Reporte exportado",
+            f"El reporte de segmentacion se guardo en:\n{output_path}",
+        )
+        self.status_label.setText(f"Reporte de segmentacion exportado: {output_path}")
+        return True
+
+    def _write_reconciliation_report(self, path: Path) -> None:
+        report = self._state.reconciliation_report
+        if report is None:
+            return
+
+        with pd.ExcelWriter(path, engine="openpyxl") as writer:
+            report.user_report.to_excel(
+                writer,
+                sheet_name="Requerimientos",
+                index=False,
+            )
+            for worksheet in writer.sheets.values():
+                for column_cells in worksheet.columns:
+                    header = column_cells[0]
+                    if header.value is None:
+                        continue
+                    width = min(max(len(str(header.value)) + 4, 14), 48)
+                    worksheet.column_dimensions[header.column_letter].width = width
+
+    def _set_mapping(self, field_key: str, column: str) -> None:
+        self._state.set_mapping(field_key, column)
+        self._mapping_preferences.remember(field_key, column)
+        self._remove_result_views()
+
+    def _add_result_views(self) -> None:
+        result_views = (
+            ("Reporte final", self.USER_REPORT),
+            ("Cruce de inventario", self.MATCH_RESULTS),
+            ("Segmentacion de requerimientos", self.REQUIREMENT_SEGMENTATION),
+            ("Segmentacion de inventario", self.INVENTORY_SEGMENTATION),
+        )
+        for label, key in result_views:
+            if self.preview_source_combo.findData(key) < 0:
+                self.preview_source_combo.addItem(label, key)
+        self.preview_source_combo.setEnabled(True)
+
+    def _remove_result_views(self) -> None:
+        self._search_results = None
+        self.export_report_button.setEnabled(False)
+        for index in range(self.preview_source_combo.count() - 1, -1, -1):
+            value = self.preview_source_combo.itemData(index)
+            if isinstance(value, str) and value.startswith("result:"):
+                self.preview_source_combo.removeItem(index)
+
+    def _select_result_view(self, key: str) -> None:
+        index = self.preview_source_combo.findData(key)
+        self.preview_source_combo.blockSignals(True)
+        self.preview_source_combo.setCurrentIndex(index)
+        self.preview_source_combo.blockSignals(False)
+        self._show_result(key)
+
+    def _show_result(self, key: str) -> None:
+        if key == self.QUICK_SEARCH_RESULTS:
+            if self._search_results is None:
+                return
+            self.preview_model.set_dataframe(
+                self._search_results,
+                limit_rows=False,
+            )
+            self.preview_table.resizeColumnsToContents()
+            self.status_label.setText(
+                "Busqueda rapida: "
+                f"{len(self._search_results)} coincidencias encontradas"
+            )
+            return
+
+        report = self._state.reconciliation_report
+        if report is None:
+            return
+        views = {
+            self.USER_REPORT: (
+                report.user_report,
+                f"Reporte final: {len(report.user_report)} filas",
+            ),
+            self.MATCH_RESULTS: (
+                report.matches,
+                f"Cruce de inventario: {report.build_summary()}",
+            ),
+            self.REQUIREMENT_SEGMENTATION: (
+                report.requirements,
+                f"Requerimientos segmentados: {len(report.requirements)} filas",
+            ),
+            self.INVENTORY_SEGMENTATION: (
+                report.inventory,
+                f"Inventario segmentado: {len(report.inventory)} filas",
+            ),
+        }
+        dataframe, status = views[key]
+        self.preview_model.set_dataframe(dataframe, limit_rows=False)
+        self.preview_table.resizeColumnsToContents()
+        self.status_label.setText(status)
+
     def clear_preview(self) -> None:
         """Clear only the table view while preserving loaded datasets."""
         self.preview_model.clear()
         self.status_label.setText("Vista previa limpia")
+
+    def _toggle_configuration_panel(self) -> None:
+        if not self.configuration_panel.isHidden():
+            sizes = self.workspace_splitter.sizes()
+            if all(size > 0 for size in sizes):
+                self._configuration_splitter_sizes = sizes
+            self.configuration_panel.setVisible(False)
+            self.configuration_toggle_button.setText("Mostrar config.")
+            self.workspace_splitter.setSizes([0, 1])
+            return
+
+        self.configuration_panel.setVisible(True)
+        self.configuration_toggle_button.setText("Ocultar config.")
+        self.workspace_splitter.setSizes(self._configuration_splitter_sizes)
 
     def _set_dark_mode(self, enabled: bool) -> None:
         self._dark_mode = enabled
@@ -311,6 +631,27 @@ class MainWindow(QMainWindow):
                 border: 1px solid #e3e7ed;
                 border-radius: 12px;
             }
+            QFrame#quickSearchCard {
+                background-color: #ffffff;
+                border: 1px solid #e3e7ed;
+                border-radius: 10px;
+            }
+            QFrame#configurationPanel {
+                background-color: transparent;
+                border: 0;
+            }
+            QSplitter#workspaceSplitter::handle:vertical {
+                background-color: #dce1e8;
+                height: 6px;
+                margin: 1px 0;
+            }
+            QSplitter#workspaceSplitter::handle:vertical:hover {
+                background-color: #c4ccd8;
+            }
+            QLabel#quickSearchLabel {
+                color: #526176;
+                font-weight: 700;
+            }
             QLabel#eyebrow {
                 color: #65758b;
                 font-size: 10px;
@@ -333,19 +674,34 @@ class MainWindow(QMainWindow):
                 color: #263247;
                 font-size: 14px;
                 font-weight: 700;
-                margin-top: 12px;
-                padding: 18px 14px 14px 14px;
+                margin-top: 18px;
+                padding: 20px 14px 14px 14px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 left: 14px;
+                top: -2px;
                 padding: 0 6px;
             }
             QLabel#filePath {
                 color: #748196;
                 font-size: 12px;
                 padding: 2px 1px 8px 1px;
+            }
+            QScrollArea#mappingScrollArea,
+            QWidget#mappingFormContainer {
+                background-color: transparent;
+                border: 0;
+            }
+            QLabel#mappingFieldLabel {
+                color: #526176;
+                font-size: 11px;
+                font-weight: 700;
+            }
+            QFrame#mappingFieldRow {
+                background-color: transparent;
+                border: 0;
             }
             QPushButton {
                 background-color: #eef2ff;
@@ -362,6 +718,11 @@ class MainWindow(QMainWindow):
             }
             QPushButton:pressed {
                 background-color: #d5ddff;
+            }
+            QPushButton:disabled {
+                background-color: #f1f3f5;
+                border-color: #dce1e8;
+                color: #9aa4b2;
             }
             QPushButton#primaryButton {
                 background-color: #4056c7;
@@ -388,6 +749,22 @@ class MainWindow(QMainWindow):
                 color: #263247;
                 min-height: 20px;
                 padding: 6px 10px;
+            }
+            QComboBox#mappingCombo {
+                min-height: 18px;
+                padding: 4px 9px;
+            }
+            QLineEdit#quickSearchInput {
+                background-color: #fbfcfd;
+                border: 1px solid #dce1e8;
+                border-radius: 7px;
+                color: #263247;
+                min-height: 20px;
+                padding: 6px 10px;
+            }
+            QLineEdit#quickSearchInput:focus {
+                background-color: #ffffff;
+                border-color: #6377d8;
             }
             QComboBox:hover {
                 border-color: #aeb9c8;
@@ -434,6 +811,11 @@ class MainWindow(QMainWindow):
             QLabel#previewSourceLabel {
                 color: #65758b;
                 font-size: 12px;
+                font-weight: 600;
+            }
+            QLabel#versionLabel {
+                color: #8b97a8;
+                font-size: 11px;
                 font-weight: 600;
             }
             QComboBox#previewSource {
@@ -516,16 +898,33 @@ class MainWindow(QMainWindow):
                 color: #ffffff;
             }
             QFrame#header,
+            QFrame#quickSearchCard,
+            QScrollArea#mappingScrollArea,
+            QWidget#mappingFormContainer,
+            QFrame#configurationPanel,
             QGroupBox,
             QFrame#previewCard {
                 background-color: #182235;
                 border-color: #334155;
             }
+            QFrame#configurationPanel {
+                background-color: transparent;
+                border: 0;
+            }
+            QSplitter#workspaceSplitter::handle:vertical {
+                background-color: #334155;
+            }
+            QSplitter#workspaceSplitter::handle:vertical:hover {
+                background-color: #53627a;
+            }
             QLabel#eyebrow,
             QLabel#subtitle,
             QLabel#filePath,
+            QLabel#mappingFieldLabel,
             QLabel#status,
-            QLabel#previewSourceLabel {
+            QLabel#previewSourceLabel,
+            QLabel#quickSearchLabel,
+            QLabel#versionLabel {
                 color: #a8b3c5;
             }
             QLabel#title,
@@ -544,6 +943,11 @@ class MainWindow(QMainWindow):
             }
             QPushButton:pressed {
                 background-color: #202c45;
+            }
+            QPushButton:disabled {
+                background-color: #172133;
+                border-color: #334155;
+                color: #6f7d92;
             }
             QPushButton#primaryButton {
                 background-color: #596fd6;
@@ -564,7 +968,8 @@ class MainWindow(QMainWindow):
                 border-color: #53647f;
             }
             QComboBox,
-            QComboBox#previewSource {
+            QComboBox#previewSource,
+            QLineEdit#quickSearchInput {
                 background-color: #1f2b3f;
                 border-color: #40506a;
                 color: #e5e7eb;
@@ -573,6 +978,10 @@ class MainWindow(QMainWindow):
                 border-color: #7183a2;
             }
             QComboBox:focus {
+                background-color: #243149;
+                border-color: #8192e8;
+            }
+            QLineEdit#quickSearchInput:focus {
                 background-color: #243149;
                 border-color: #8192e8;
             }

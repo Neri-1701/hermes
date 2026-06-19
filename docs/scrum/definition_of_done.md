@@ -23,6 +23,16 @@ Una historia de usuario de Hermes se considera terminada cuando cumple con los s
 - El sistema permite alternar entre tema claro y oscuro.
 - El sistema no ejecuta conciliacion ni asignacion automatica en Sprint 1.
 
+## Criterios de conciliacion 0.4.0
+
+- El sistema segmenta requerimientos e inventario con los mismos extractores.
+- Las coincidencias exactas descuentan existencia sin reutilizar saldos.
+- Las coincidencias parciales requieren revision y no descuentan inventario.
+- La interfaz muestra cruce, segmentacion y saldo restante por inventario.
+- Cambiar archivos o mapeos invalida los resultados anteriores.
+- Los conflictos tecnicos y materiales no segmentados no se asignan
+  automaticamente.
+
 ## Criterios de calidad tecnica
 
 - El codigo esta separado en modelos de dominio, servicios, interfaz y punto de entrada.

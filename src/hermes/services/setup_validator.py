@@ -26,7 +26,8 @@ class SetupValidator:
         for field in self._fields:
             selected_column = state.mappings.get(field.key)
             if not selected_column:
-                errors.append(f"Selecciona: {field.label}.")
+                if field.required:
+                    errors.append(f"Selecciona: {field.label}.")
                 continue
 
             dataset = state.dataset_for(field.source)
@@ -50,7 +51,9 @@ class SetupValidator:
             "Mapeo seleccionado:",
         ]
         for field in self._fields:
-            lines.append(f"- {field.label}: {state.mappings[field.key]}")
+            selected = state.mappings.get(field.key)
+            if selected:
+                lines.append(f"- {field.label}: {selected}")
 
         lines.extend(
             [
