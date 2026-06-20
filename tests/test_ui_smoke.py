@@ -31,15 +31,18 @@ def test_main_window_toggles_dark_mode() -> None:
     assert window.dark_mode_action.isCheckable()
     assert not window.dark_mode_action.isChecked()
     assert "#111827" not in light_styles
+    assert "#26344a" not in window.reconciliation_dashboard.styleSheet()
 
     window.dark_mode_action.setChecked(True)
 
     assert window.dark_mode_action.isChecked()
     assert "#111827" in window.styleSheet()
+    assert "#26344a" in window.reconciliation_dashboard.styleSheet()
 
     window.dark_mode_action.setChecked(False)
 
     assert window.styleSheet() == light_styles
+    assert "#26344a" not in window.reconciliation_dashboard.styleSheet()
 
     window.close()
 
@@ -303,8 +306,15 @@ def test_main_window_segments_and_searches_inventory(
     assert report.matches.iloc[0]["estado"] == (
         ReconciliationStatus.COVERED.value
     )
-    assert window.preview_source_combo.count() == 6
-    assert window.preview_source_combo.currentData() == window.MATCH_RESULTS
+    assert window.preview_source_combo.count() == 7
+    assert window.preview_source_combo.currentData() == window.BI_DASHBOARD
+    assert window.preview_stack.currentWidget() == window.reconciliation_dashboard
+    assert "Resumen BI" in window.status_label.text()
+
+    matches_index = window.preview_source_combo.findData(window.MATCH_RESULTS)
+    window.preview_source_combo.setCurrentIndex(matches_index)
+
+    assert window.preview_stack.currentWidget() == window.preview_table
     assert window.preview_model.rowCount() == 1
     assert "Cruce de inventario" in window.status_label.text()
 

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -43,6 +44,7 @@ from hermes.services.reconciliation import (
 )
 from hermes.services.setup_validator import SetupValidator
 from hermes.ui.dataframe_model import DataFrameTableModel
+from hermes.ui.reconciliation_dashboard import ReconciliationDashboard
 from hermes.ui.source_panel import SourcePanel
 
 
@@ -54,6 +56,7 @@ class MainWindow(QMainWindow):
     REQUIREMENT_SEGMENTATION = "result:requirements"
     INVENTORY_SEGMENTATION = "result:inventory"
     QUICK_SEARCH_RESULTS = "result:search"
+    BI_DASHBOARD = "result:bi_dashboard"
 
     def __init__(
         self,
@@ -260,7 +263,12 @@ class MainWindow(QMainWindow):
         self.preview_table.setCornerButtonEnabled(False)
         self.preview_table.horizontalHeader().setDefaultSectionSize(180)
         self.preview_table.verticalHeader().setDefaultSectionSize(34)
-        preview_layout.addWidget(self.preview_table, stretch=1)
+        self.reconciliation_dashboard = ReconciliationDashboard(self)
+        self.preview_stack = QStackedWidget()
+        self.preview_stack.setObjectName("previewStack")
+        self.preview_stack.addWidget(self.preview_table)
+        self.preview_stack.addWidget(self.reconciliation_dashboard)
+        preview_layout.addWidget(self.preview_stack, stretch=1)
         self.workspace_splitter.addWidget(preview_card)
         self.workspace_splitter.setStretchFactor(0, 0)
         self.workspace_splitter.setStretchFactor(1, 1)
@@ -345,6 +353,7 @@ class MainWindow(QMainWindow):
         if dataset is None:
             return
 
+        self.preview_stack.setCurrentWidget(self.preview_table)
         self.preview_model.set_dataframe(dataset.dataframe)
         self.preview_table.resizeColumnsToContents()
         self.status_label.setText(
@@ -391,9 +400,10 @@ class MainWindow(QMainWindow):
             return False
 
         self._state.set_reconciliation_report(report)
+        self.reconciliation_dashboard.set_report(report)
         self.export_report_button.setEnabled(True)
         self._add_result_views()
-        self._select_result_view(self.MATCH_RESULTS)
+        self._select_result_view(self.BI_DASHBOARD)
         QMessageBox.information(
             self,
             "Cruce completado",
@@ -497,6 +507,7 @@ class MainWindow(QMainWindow):
 
     def _add_result_views(self) -> None:
         result_views = (
+            ("Resumen BI", self.BI_DASHBOARD),
             ("Reporte final", self.USER_REPORT),
             ("Cruce de inventario", self.MATCH_RESULTS),
             ("Segmentacion de requerimientos", self.REQUIREMENT_SEGMENTATION),
@@ -509,6 +520,7 @@ class MainWindow(QMainWindow):
 
     def _remove_result_views(self) -> None:
         self._search_results = None
+        self.reconciliation_dashboard.clear()
         self.export_report_button.setEnabled(False)
         for index in range(self.preview_source_combo.count() - 1, -1, -1):
             value = self.preview_source_combo.itemData(index)
@@ -526,6 +538,7 @@ class MainWindow(QMainWindow):
         if key == self.QUICK_SEARCH_RESULTS:
             if self._search_results is None:
                 return
+            self.preview_stack.setCurrentWidget(self.preview_table)
             self.preview_model.set_dataframe(
                 self._search_results,
                 limit_rows=False,
@@ -540,6 +553,12 @@ class MainWindow(QMainWindow):
         report = self._state.reconciliation_report
         if report is None:
             return
+        if key == self.BI_DASHBOARD:
+            self.reconciliation_dashboard.set_report(report)
+            self.preview_stack.setCurrentWidget(self.reconciliation_dashboard)
+            self.status_label.setText("Resumen BI: " + report.build_summary())
+            return
+
         views = {
             self.USER_REPORT: (
                 report.user_report,
@@ -559,6 +578,7 @@ class MainWindow(QMainWindow):
             ),
         }
         dataframe, status = views[key]
+        self.preview_stack.setCurrentWidget(self.preview_table)
         self.preview_model.set_dataframe(dataframe, limit_rows=False)
         self.preview_table.resizeColumnsToContents()
         self.status_label.setText(status)
@@ -566,6 +586,7 @@ class MainWindow(QMainWindow):
     def clear_preview(self) -> None:
         """Clear only the table view while preserving loaded datasets."""
         self.preview_model.clear()
+        self.reconciliation_dashboard.clear()
         self.status_label.setText("Vista previa limpia")
 
     def _toggle_configuration_panel(self) -> None:
@@ -585,6 +606,7 @@ class MainWindow(QMainWindow):
     def _set_dark_mode(self, enabled: bool) -> None:
         self._dark_mode = enabled
         self._apply_styles()
+        self.reconciliation_dashboard.set_dark_mode(enabled)
 
     def _apply_styles(self) -> None:
         light_styles = """

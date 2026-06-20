@@ -66,8 +66,11 @@ def test_build_reconciliation_dashboard_summary_aggregates_totals() -> None:
     assert summary.total_required == 15
     assert summary.total_assigned == 12
     assert summary.total_missing == 3
-    assert summary.coverage_pct == 80
-    assert summary.cards[0].value == "80.0%"
+    assert summary.covered_count == 1
+    assert summary.requirement_count == 2
+    assert summary.coverage_pct == 50
+    assert summary.cards[0].value == "50.0%"
+    assert summary.cards[0].detail == "1 de 2 partidas cubiertas"
     assert summary.status_distribution[0].label == "Cubiertos"
     assert summary.status_distribution[0].count == 1
 
@@ -118,5 +121,7 @@ def test_build_reconciliation_dashboard_summary_groups_by_family() -> None:
     assert family["cantidad_requerida"] == 10
     assert family["cantidad_asignada"] == 1
     assert family["cantidad_faltante"] == 9
-    assert family["cobertura_pct"] == 10
+    assert family["partidas_cubiertas"] == 0
+    assert family["cobertura_partidas_pct"] == 0
+    assert family["cobertura_cantidad_pct"] == 10
     assert len(summary.critical_requirements) == 2

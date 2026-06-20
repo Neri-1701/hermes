@@ -6,7 +6,7 @@ Despues de cargar inventario, cargar requerimientos y ejecutar el cruce, Hermes 
 
 El dashboard no busca reemplazar el reporte final ni Power BI. Su funcion es responder rapido:
 
-- cuanto se pudo cubrir
+- cuantas partidas se pudieron cubrir
 - cuanto falta
 - que familias concentran el problema
 - que partidas requieren revision
@@ -27,7 +27,7 @@ Tablas usadas:
 
 `build_reconciliation_dashboard_summary` genera:
 
-- cobertura total
+- cobertura de partidas, calculada como partidas cubiertas sobre partidas totales
 - total requerido
 - total asignado
 - total faltante
@@ -47,7 +47,7 @@ Tablas usadas:
 
 - `src/hermes/ui/reconciliation_dashboard.py`
   - widget visual de PySide6
-  - contiene tarjetas, barra de cobertura, distribucion por estado y tablas resumidas
+  - contiene tarjetas, barra de cobertura, donas en azul/gris y tablas resumidas
   - recibe directamente un `ReconciliationReport`
 
 - `tests/test_bi_summary.py`
@@ -91,4 +91,4 @@ self.reconciliation_dashboard.set_report(report)
 
 ## Nota tecnica
 
-La rama actual deja separada la logica de BI y el widget visual. El siguiente paso debe ser ajustar `main_window.py` para alternar entre `QTableView` y `ReconciliationDashboard` dentro del panel de resultados.
+La logica de BI queda separada del widget visual. `main_window.py` solo alterna entre `QTableView` y `ReconciliationDashboard` dentro del panel de resultados.

@@ -40,9 +40,15 @@ class ReconciliationDashboardSummary:
     critical_requirements: pd.DataFrame
     inventory_usage: pd.DataFrame
     coverage_pct: float
+    covered_count: int
+    requirement_count: int
     total_required: float
     total_assigned: float
     total_missing: float
+    inventory_usage_pct: float
+    inventory_initial: float
+    inventory_assigned: float
+    inventory_remaining: float
 
 
 _STATUS_LABELS = {
@@ -82,10 +88,10 @@ def build_reconciliation_dashboard_summary(
     total_required = _sum(matches, "cantidad_requerida")
     total_assigned = _sum(matches, "cantidad_asignada")
     total_missing = _sum(matches, "cantidad_faltante")
-    coverage_pct = _percentage(total_assigned, total_required)
 
     requirement_count = len(matches)
     covered_count = _count_status(matches, ReconciliationStatus.COVERED.value)
+    coverage_pct = _percentage(covered_count, requirement_count)
     review_count = _count_statuses(
         matches,
         {
@@ -102,12 +108,9 @@ def build_reconciliation_dashboard_summary(
 
     cards = (
         MetricCard(
-            title="Cobertura total",
+            title="Cobertura de partidas",
             value=f"{coverage_pct:.1f}%",
-            detail=(
-                f"Asignado {_format_quantity(total_assigned)} de "
-                f"{_format_quantity(total_required)} requeridos"
-            ),
+            detail=f"{covered_count} de {requirement_count} partidas cubiertas",
             level=_coverage_level(coverage_pct),
         ),
         MetricCard(
@@ -143,9 +146,15 @@ def build_reconciliation_dashboard_summary(
         critical_requirements=_build_critical_requirements(matches),
         inventory_usage=_build_inventory_usage(inventory),
         coverage_pct=coverage_pct,
+        covered_count=covered_count,
+        requirement_count=requirement_count,
         total_required=total_required,
         total_assigned=total_assigned,
         total_missing=total_missing,
+        inventory_usage_pct=inventory_usage_pct,
+        inventory_initial=inventory_initial,
+        inventory_assigned=inventory_assigned,
+        inventory_remaining=inventory_remaining,
     )
 
 
@@ -179,6 +188,7 @@ def _build_family_summary(
         "cantidad_requerida",
         "cantidad_asignada",
         "cantidad_faltante",
+        "estado",
     ]
     if matches.empty or not _has_columns(matches, requirement_columns):
         return _family_summary_empty()
@@ -192,6 +202,12 @@ def _build_family_summary(
             cantidad_requerida=("cantidad_requerida", "sum"),
             cantidad_asignada=("cantidad_asignada", "sum"),
             cantidad_faltante=("cantidad_faltante", "sum"),
+            partidas_cubiertas=(
+                "estado",
+                lambda values: int(
+                    (values == ReconciliationStatus.COVERED.value).sum()
+                ),
+            ),
         )
         .reset_index()
     )
@@ -217,7 +233,11 @@ def _build_family_summary(
         on="familia",
         how="left",
     ).fillna({"inventario_inicial": 0.0, "inventario_restante": 0.0})
-    summary["cobertura_pct"] = summary.apply(
+    summary["cobertura_partidas_pct"] = summary.apply(
+        lambda row: _percentage(row["partidas_cubiertas"], row["requerimientos"]),
+        axis=1,
+    )
+    summary["cobertura_cantidad_pct"] = summary.apply(
         lambda row: _percentage(row["cantidad_asignada"], row["cantidad_requerida"]),
         axis=1,
     )
@@ -303,9 +323,11 @@ def _family_summary_empty() -> pd.DataFrame:
             "cantidad_requerida",
             "cantidad_asignada",
             "cantidad_faltante",
+            "partidas_cubiertas",
             "inventario_inicial",
             "inventario_restante",
-            "cobertura_pct",
+            "cobertura_partidas_pct",
+            "cobertura_cantidad_pct",
             "inventario_utilizado",
         ]
     )
